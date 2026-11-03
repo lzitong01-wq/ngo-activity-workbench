@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/archive/favicon.svg" type="image/svg+xml">
+<title>活动全周期工作台</title>
+<style>
+:root{
+  --brand:#2f6bff; --brand-d:#1f4fd0; --brand-l:#eaf1ff;
+  --ok:#12a150; --ok-l:#e6f7ed; --warn:#e08a00; --warn-l:#fff4e0;
+  --ink:#1b2330; --ink-2:#5a6675; --ink-3:#8a95a5;
+  --line:#e3e8ef; --bg:#f5f7fa;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.65}
+header{background:#fff;border-bottom:1px solid var(--line);height:60px;
+  display:flex;align-items:center;padding:0 24px}
+.logo{font-size:17px;font-weight:700}
+.logo span{color:var(--brand)}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 40px}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:var(--ink-2);margin:0 0 22px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;
+  text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px;
+  transition:.15s;border-top:4px solid var(--brand)}
+.card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(20,40,90,.10)}
+.card .no{font-size:12px;color:var(--ink-3);letter-spacing:1px}
+.card h2{margin:0;font-size:17px}
+.card p{margin:0;color:var(--ink-2);font-size:13px;flex:1}
+.card ul{margin:0;padding-left:18px;color:var(--ink-2);font-size:12.5px}
+.card .go{color:var(--brand-d);font-size:13px;font-weight:600}
+.card.b{border-top-color:var(--ok)}
+.card.c{border-top-color:var(--warn)}
+.note{background:var(--warn-l);border:1px solid #f2d9a8;color:#7a5300;
+  border-radius:10px;padding:12px 16px;margin-top:24px;font-size:13px}
+.note b{color:#6b4a00}
+footer{color:var(--ink-3);font-size:12px;text-align:center;padding:18px}
+</style>
+</head>
+<body>
+<header><div class="logo"><span>活动全周期工作台</span></div></header>
+<div class="wrap">
+  <h1>活动全周期工作台</h1>
+  <p class="sub">报名接入 → 现场签到 → 归档留痕 → 照片脱敏，一条链路走完一场活动。</p>
+
+  <div class="grid">
+    <a class="card" href="/static/index.html">
+      <div class="no">模块一</div>
+      <h2>活动全流程（报名 · 签到）</h2>
+      <p>活动前与活动中的运营主战场：多来源报名统一接入、重复识别与合并、现场签到回传、账号权限与服务提示。</p>
+      <ul>
+        <li>群接龙 / 小程序 / 代报名单解析导入</li>
+        <li>重复报名分组、合并与留痕</li>
+        <li>现场签到、纸质表誊录回传</li>
+        <li>历史信息库自动补全、社工 / 志愿者 / 家长端</li>
+      </ul>
+      <div class="go">进入模块 →</div>
+    </a>
+
+    <a class="card b" href="/archive">
+      <div class="no">模块二</div>
+      <h2>活动档案管理台（活动后归档）</h2>
+      <p>活动结束后的收口：8 类资料齐备度检查、G3 归档卡点、台账与照片索引、三类导出包。</p>
+      <ul>
+        <li>总览看板 / 活动档案 / 归档工作站</li>
+        <li>待办中心、人员身份库</li>
+        <li>导入模块一导出的报名与签到名单</li>
+        <li>内部留档包 / 年检包 / 基金会备案包（脱敏）</li>
+      </ul>
+      <div class="go">进入模块 →</div>
+    </a>
+
+    <a class="card c" href="/tongyan">
+      <div class="no">模块三</div>
+      <h2>童颜守护（儿童照片脱敏）</h2>
+      <p>对外发布前的照片处理：人脸检测 + 年龄判断，马赛克 / 模糊 / 卡通笑脸三种打码方式。</p>
+      <ul>
+        <li>自动识别儿童人脸，可手动补框复核</li>
+        <li>原图不上传，仅保存打码后的图片</li>
+        <li>处理后的图片存入服务端，供归档台引用</li>
+      </ul>
+      <div class="go">进入模块 →</div>
+    </a>
+  </div>
+
+  <div class="note">
+    <b>使用与共享提示</b><br>
+    1. 模块一（报名签到）需要登录。演示账号与口令由服务端配置提供，见 <b>config.example.env</b> 与登录页「演示账号一键登录」；志愿者与家长用手机号验证码登录。<b>生产环境请关闭演示登录并覆盖全部默认口令。</b><br>
+    2. 三个模块的数据都保存在服务端，拿到链接的人都能读写。<b>请勿在公开渠道传播链接</b>，也不要录入真实儿童敏感信息做演示。<br>
+    3. 模块二、模块三目前不设登录，如需限制访问请在模块一「账号权限」之外另行加一层网关。
+  </div>
+</div>
+<footer>示例公益机构 · 活动全周期工作台</footer>
+</body>
+</html>

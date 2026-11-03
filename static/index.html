@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多来源报名统一列表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .anomaly-row { background-color: #fef2f2 !important; }
+        .anomaly-row:hover { background-color: #fee2e2 !important; }
+        .confirmed-ok-row { background-color: #f0fdf4 !important; }
+        .confirmed-ok-row:hover { background-color: #dcfce7 !important; }
+        .merged-row { opacity: .55; }
+        .modal-backdrop { background-color: rgba(0,0,0,0.5); }
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 2px; white-space: nowrap; }
+        .tag-system { background-color: #fee2e2; color: #991b1b; }
+        .tag-manual { background-color: #ffedd5; color: #9a3412; }
+        .tag-confirmed { background-color: #dcfce7; color: #166534; }
+        .tag-muted { background-color: #f3f4f6; color: #6b7280; text-decoration: line-through; }
+        .log-item { border-bottom: 1px solid #f3f4f6; padding: 6px 0; font-size: 12px; }
+        .log-item:last-child { border-bottom: none; }
+        .editable { border-bottom: 1px dashed #cbd5e1; }
+        .editable:focus { outline: 2px solid #3b82f6; background-color: #eff6ff; }
+        .editable:hover { border-bottom-color: #3b82f6; }
+        .dup-card { border: 1px solid #fde68a; }
+        .dup-card table td, .dup-card table th { padding: 6px 10px; font-size: 13px; }
+        .flash { animation: flash 1.2s ease 2; }
+        @keyframes flash { 0%,100% { background-color: transparent; } 50% { background-color: #bfdbfe; } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-4 py-6">
+        <!-- 标题 -->
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">多来源报名统一列表</h1>
+                <p class="text-sm text-gray-500 mt-1">统一入库、可追溯、可导出；报名必须归属活动；详情内可直接改字段（实时重校验+留痕）；疑似重复自动成组；新报名自动比对历史信息库，命中自动补全缺失字段并提示复核</p>
+            </div>
+            <div class="flex gap-2 flex-wrap">
+                <a href="/static/activities.html" data-perm="manage_activities" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700 transition">活动管理 →</a>
+                <a href="/static/attendance.html" data-perm="attendance_callback" class="px-4 py-2 text-sm text-white bg-amber-500 rounded hover:bg-amber-600 transition">现场签到 →</a>
+                <a href="/static/profiles.html" data-perm="history_profiles" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700 transition">历史信息库 →</a>
+                <a href="/static/group_import.html" data-perm="manage_enrollments" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">群接龙导入 →</a>
+                <a href="/static/users.html" data-perm="manage_users" class="px-4 py-2 text-sm text-white bg-purple-600 rounded hover:bg-purple-700 transition">账号权限 →</a>
+                <a href="/static/volunteer.html" data-perm="volunteer_portal" class="px-4 py-2 text-sm text-white bg-green-600 rounded hover:bg-green-700 transition">我的服务 →</a>
+                <a href="/static/parent.html" data-perm="parent_portal" class="px-4 py-2 text-sm text-white bg-orange-500 rounded hover:bg-orange-600 transition">我的报名 →</a>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="grid grid-cols-2 md:grid-cols-8 gap-4 mb-6" id="stats">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">总报名数</div>
+                <div class="text-2xl font-bold text-gray-800" id="stat-total">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">进行中活动</div>
+                <div class="text-2xl font-bold text-teal-600" id="stat-activities">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">异常待处理</div>
+                <div class="text-2xl font-bold text-red-600" id="stat-anomaly">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">人工打标</div>
+                <div class="text-2xl font-bold text-orange-600" id="stat-manual">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">疑似重复组</div>
+                <div class="text-2xl font-bold text-amber-600" id="stat-dup">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">历史待核对</div>
+                <div class="text-2xl font-bold text-violet-600" id="stat-history">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">小程序</div>
+                <div class="text-2xl font-bold text-blue-600" id="stat-miniapp">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">群接龙</div>
+                <div class="text-2xl font-bold text-green-600" id="stat-group">-</div>
+            </div>
+        </div>
+
+        <!-- 疑似重复分组 -->
+        <div class="bg-white rounded-lg shadow mb-6 overflow-hidden" id="dup-section">
+            <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-amber-50 cursor-pointer" onclick="toggleDupSection()">
+                <div>
+                    <h3 class="font-bold text-gray-800">⚠️ 疑似重复报名 <span id="dup-badge" class="ml-1 text-sm font-normal text-gray-500">加载中…</span></h3>
+                    <p class="text-xs text-gray-500 mt-0.5">同手机号或同「真名+家长」自动成组；并排对比后可「合并为一条」或「标记非重复」，动作全部留痕</p>
+                </div>
+                <span id="dup-toggle" class="text-gray-400 text-sm">收起 ▲</span>
+            </div>
+            <div id="dup-body" class="p-4 space-y-4"></div>
+        </div>
+
+        <!-- 筛选栏 -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6">
+            <div class="flex flex-wrap items-end gap-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">所属活动</label>
+                    <select id="filter-activity" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[170px]">
+                        <option value="">全部活动</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">来源类型</label>
+                    <select id="filter-source" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px]">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">异常标签</label>
+                    <select id="filter-anomaly" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">状态</label>
+                    <select id="filter-status" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px]">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">签到状态</label>
+                    <select id="filter-attendance" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[110px]">
+                        <option value="">全部</option>
+                        <option value="到场">到场</option>
+                        <option value="未到场">未到场</option>
+                        <option value="临时到场">临时到场</option>
+                        <option value="none">未记录</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">导入批次</label>
+                    <input type="text" id="filter-batch" placeholder="留空查全部" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">关键词</label>
+                    <input type="text" id="filter-keyword" placeholder="真名/小名/家长/手机" class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48">
+                </div>
+                <div class="flex gap-2 ml-auto">
+                    <button onclick="openCreateModal()" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">＋ 新增报名</button>
+                    <button onclick="resetFilters()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition">重置</button>
+                    <button onclick="exportData('csv')" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded hover:bg-indigo-700 transition">导出 CSV</button>
+                    <button onclick="exportData('xlsx')" class="px-4 py-2 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 transition">导出 Excel</button>
+                    <button onclick="exportSheet()" class="px-4 py-2 text-sm text-white bg-rose-600 rounded hover:bg-rose-700 transition" title="按当前「所属活动」筛选导出纸质签到表">签到表</button>
+                    <button onclick="exportLedger()" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700 transition" title="按当前「所属活动」筛选导出台账（报名+异常处理+签到结果）">台账</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表格 -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">序号</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">所属活动</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">学生真名</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">学生小名</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">家长姓名</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">手机号</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">来源类型</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">来源时间</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider w-72">异常标签（红=系统 / 橙=人工）</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">状态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="enrollment-list" class="divide-y divide-gray-200 bg-white">
+                        <tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+                <div class="text-sm text-gray-500" id="pagination-info">-</div>
+                <div class="flex gap-2" id="pagination-buttons"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 详情 Modal -->
+    <div id="detail-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 modal-backdrop" onclick="closeModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h3 class="text-lg font-bold text-gray-800">报名详情 · 可直接改字段</h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
+                <div class="px-6 py-3 bg-blue-50 border-b border-blue-100 flex items-center gap-2 text-sm">
+                    <span class="text-gray-600 whitespace-nowrap">操作人（编辑留痕用）</span>
+                    <input type="text" id="detail-operator" value="社工小张" class="border rounded px-2 py-1 text-sm w-28 bg-white">
+                </div>
+                <div class="px-6 py-4" id="detail-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增报名 Modal（任务3.5：直接接入渠道也必须归属活动） -->
+    <div id="create-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 modal-backdrop" onclick="closeCreateModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-gray-800">＋ 新增报名（小程序 / 老师代报 / 电话·私聊）</h3>
+                    <button onclick="closeCreateModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
+                <div class="px-6 py-4 space-y-3 text-sm">
+                    <div>
+                        <label class="block text-gray-500 mb-1">归属活动 <span class="text-red-500">*</span>（只显示进行中的活动）</label>
+                        <select id="create-activity" class="border border-gray-300 rounded px-3 py-2 w-full">
+                            <option value="">— 请选择活动 —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">来源渠道 <span class="text-red-500">*</span></label>
+                        <select id="create-source" class="border border-gray-300 rounded px-3 py-2 w-full">
+                            <option value="miniapp">小程序</option>
+                            <option value="teacher_proxy">老师代报</option>
+                            <option value="phone_private">电话/私聊</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-500 mb-1">学生真名</label>
+                            <input type="text" id="create-real" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="可留空">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">学生小名</label>
+                            <input type="text" id="create-nick" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="可留空">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">家长姓名</label>
+                            <input type="text" id="create-parent" class="border border-gray-300 rounded px-3 py-2 w-full">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">手机号</label>
+                            <input type="text" id="create-phone" class="border border-gray-300 rounded px-3 py-2 w-full">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">与孩子关系</label>
+                            <input type="text" id="create-relation" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="母亲/父亲/…">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">来源用户</label>
+                            <input type="text" id="create-source-user" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="如：微信昵称/老师姓名">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">备注</label>
+                        <input type="text" id="create-note" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    </div>
+                    <div id="create-result" class="hidden border rounded p-3 text-xs"></div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button onclick="closeCreateModal()" class="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200">关闭</button>
+                        <button onclick="submitCreate()" class="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">提交报名</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 z-[60] hidden">
+        <div class="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg" id="toast-text"></div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        let currentPage = 1;
+        let currentDetailId = null;
+        let filters = { source_type: '', anomaly_tag: '', status: '', keyword: '', import_batch_id: '', activity_id: '', attendance_status: '' };
+        let activitiesCache = [];
+
+        const sourceLabels = {
+            'miniapp': '小程序', 'group_signup': '群接龙',
+            'teacher_proxy': '老师代报', 'phone_private': '电话/私聊'
+        };
+        const statusColors = {
+            '待处理': 'bg-yellow-100 text-yellow-800', '已确认': 'bg-green-100 text-green-800',
+            '已合并': 'bg-blue-100 text-blue-800', '已修正': 'bg-purple-100 text-purple-800'
+        };
+        const fieldLabels = {
+            student_real_name: '学生真名', student_nickname: '学生小名', parent_name: '家长姓名',
+            phone: '手机号', relation: '与孩子关系', note: '备注', id_card: '身份证', emergency_contact: '紧急联系人'
+        };
+
+        async function init() {
+            await loadFilters();
+            await loadActivities();
+            // 支持 activities.html 跳转带 ?activity_id=N，直达该活动归档视图
+            const actParam = new URLSearchParams(window.location.search).get('activity_id');
+            if (actParam) {
+                filters.activity_id = actParam;
+                document.getElementById('filter-activity').value = actParam;
+            }
+            await refreshAll();
+        }
+
+        // 任务3.5：活动下拉（筛选 + 新增报名弹窗共用）
+        async function loadActivities() {
+            try {
+                const res = await fetch(`${API_BASE}/api/activities`);
+                const json = await res.json();
+                activitiesCache = json.data || [];
+                const filterSel = document.getElementById('filter-activity');
+                activitiesCache.forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = `${a.name}（${a.status}·${a.enrollment_count}条）`;
+                    filterSel.appendChild(opt);
+                });
+                const createSel = document.getElementById('create-activity');
+                activitiesCache.filter(a => a.status === '进行中').forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = `${a.name} · 已报 ${a.enrollment_count}${a.capacity ? '/' + a.capacity : ''} 人${a.deadline ? ' · 截止 ' + a.deadline : ''}`;
+                    createSel.appendChild(opt);
+                });
+                filterSel.addEventListener('change', updateFilters);
+            } catch (err) { console.error('加载活动失败', err); }
+        }
+
+        async function refreshAll() {
+            await Promise.all([loadStats(), loadDuplicates()]);
+            await loadEnrollments(currentPage);
+        }
+
+        async function loadFilters() {
+            try {
+                const res = await fetch(`${API_BASE}/api/filters`);
+                const json = await res.json();
+                const sourceSelect = document.getElementById('filter-source');
+                json.source_types.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.value; opt.textContent = item.label;
+                    sourceSelect.appendChild(opt);
+                });
+                const anomalySelect = document.getElementById('filter-anomaly');
+                const sysGroup = document.createElement('optgroup');
+                sysGroup.label = '系统识别';
+                json.anomaly_tags.forEach(tag => {
+                    const opt = document.createElement('option');
+                    opt.value = tag; opt.textContent = tag;
+                    sysGroup.appendChild(opt);
+                });
+                anomalySelect.appendChild(sysGroup);
+                const manGroup = document.createElement('optgroup');
+                manGroup.label = '人工判断';
+                (json.manual_tag_presets || []).forEach(tag => {
+                    const opt = document.createElement('option');
+                    opt.value = tag; opt.textContent = tag;
+                    manGroup.appendChild(opt);
+                });
+                anomalySelect.appendChild(manGroup);
+                const statusSelect = document.getElementById('filter-status');
+                json.status.forEach(st => {
+                    const opt = document.createElement('option');
+                    opt.value = st; opt.textContent = st;
+                    statusSelect.appendChild(opt);
+                });
+                document.getElementById('filter-source').addEventListener('change', updateFilters);
+                document.getElementById('filter-anomaly').addEventListener('change', updateFilters);
+                document.getElementById('filter-status').addEventListener('change', updateFilters);
+                document.getElementById('filter-batch').addEventListener('input', debounce(updateFilters, 300));
+                document.getElementById('filter-keyword').addEventListener('input', debounce(updateFilters, 300));
+            } catch (err) { console.error('加载筛选失败', err); }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/stats`);
+                const json = await res.json();
+                document.getElementById('stat-total').textContent = json.total;
+                document.getElementById('stat-activities').textContent = json.active_activities ?? '-';
+                document.getElementById('stat-anomaly').textContent = json.anomaly;
+                document.getElementById('stat-manual').textContent = json.manual || 0;
+                document.getElementById('stat-miniapp').textContent = json.by_source['小程序'] || 0;
+                document.getElementById('stat-group').textContent = json.by_source['群接龙'] || 0;
+                const dupRes = await fetch(`${API_BASE}/api/duplicates`);
+                const dupJson = await dupRes.json();
+                document.getElementById('stat-dup').textContent = dupJson.group_count;
+                const histRes = await fetch(`${API_BASE}/api/history/pending`);
+                const histJson = await histRes.json();
+                document.getElementById('stat-history').textContent = histJson.total || 0;
+            } catch (err) { console.error('加载统计失败', err); }
+        }
+
+        // ---------- 疑似重复分组 ----------
+        function toggleDupSection() {
+            const body = document.getElementById('dup-body');
+            const t = document.getElementById('dup-toggle');
+            body.classList.toggle('hidden');
+            t.textContent = body.classList.contains('hidden') ? '展开 ▼' : '收起 ▲';
+        }
+
+        async function loadDuplicates() {
+            const body = document.getElementById('dup-body');
+            const badge = document.getElementById('dup-badge');
+            try {
+                const res = await fetch(`${API_BASE}/api/duplicates`);
+                const json = await res.json();
+                if (!json.group_count) {
+                    badge.textContent = '当前没有疑似重复';
+                    body.innerHTML = '<div class="text-sm text-gray-400 text-center py-4">✅ 没有疑似重复的报名记录</div>';
+                    return;
+                }
+                badge.textContent = `${json.group_count} 组 · ${json.record_count} 条，需要人工判断`;
+                body.innerHTML = json.groups.map((g, gi) => renderDupGroup(g, gi)).join('');
+            } catch (err) {
+                badge.textContent = '加载失败';
+                body.innerHTML = `<div class="text-sm text-red-500">加载疑似重复失败：${err.message}</div>`;
+            }
+        }
+
+        function renderDupGroup(g, gi) {
+            const records = g.records;
+            const fields = ['student_real_name', 'student_nickname', 'parent_name', 'phone', 'source_type', 'source_time'];
+            const reasonText = (g.reasons || []).join('、') || '疑似同一人';
+
+            const headCells = records.map((r, ri) => `
+                <th class="bg-gray-50 text-left align-top">
+                    <div class="flex items-center gap-2">
+                        <input type="radio" name="dup-primary-${gi}" value="${r.id}" ${ri === 0 ? 'checked' : ''}
+                               title="勾选作为合并后保留的记录" class="accent-blue-600">
+                        <span class="font-bold">#${r.id}（保留）</span>
+                    </div>
+                    <div class="font-normal text-xs text-gray-500 mt-0.5">${sourceLabels[r.source_type] || r.source_type}</div>
+                </th>
+            `).join('');
+
+            const bodyRows = fields.map(f => `
+                <tr class="border-t">
+                    <td class="text-gray-500 whitespace-nowrap bg-gray-50">${f === 'source_type' ? '来源类型' : f === 'source_time' ? '来源时间' : fieldLabels[f] || f}</td>
+                    ${records.map(r => {
+                        let v = r[f];
+                        if (f === 'source_type') v = sourceLabels[v] || v;
+                        const diff = records.some(o => (o[f] || '') !== (r[f] || ''));
+                        return `<td class="${diff ? 'bg-yellow-50 font-medium text-gray-900' : 'text-gray-600'}">${escapeHtml(v || '—')}</td>`;
+                    }).join('')}
+                </tr>
+            `).join('');
+
+            const tagRow = `
+                <tr class="border-t">
+                    <td class="text-gray-500 whitespace-nowrap bg-gray-50">标签/状态</td>
+                    ${records.map(r => `
+                        <td>
+                            ${renderTags(r)}
+                            <span class="inline-block px-2 py-0.5 rounded text-xs ${statusColors[r.status] || 'bg-gray-100 text-gray-800'}">${r.status}</span>
+                        </td>
+                    `).join('')}
+                </tr>
+            `;
+
+            const actionCells = records.map(r => `
+                <td class="border-t">
+                    <div class="flex flex-wrap gap-2 py-1">
+                        <button onclick="mergeDupGroup(${gi}, ${r.id})"
+                                class="px-3 py-1.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700">合并：保留 #${r.id}，并入其余</button>
+                        <button onclick="markNotDuplicate(${r.id})"
+                                class="px-3 py-1.5 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200" title="确认不是同一人，解除重复标签">不是同一人，解除重复</button>
+                    </div>
+                </td>
+            `).join('');
+
+            return `
+                <div class="dup-card rounded-lg overflow-hidden" id="dup-group-${gi}">
+                    <div class="px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm">
+                        <span class="font-bold text-amber-800">组 ${gi + 1}</span>
+                        <span class="text-amber-700">· ${records.length} 条疑似同一人（${reasonText}）</span>
+                        <span class="text-gray-400 text-xs ml-2">黄色底=组内不一致的字段；点列头 radio 选保留记录，再点「合并」</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead><tr><th class="bg-gray-50"></th>${headCells}</tr></thead>
+                            <tbody>${bodyRows}${tagRow}
+                                <tr><td class="bg-gray-50 text-gray-500 whitespace-nowrap">处理</td>${actionCells}</tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function mergeDupGroup(gi, primaryId) {
+            const g = await (await fetch(`${API_BASE}/api/duplicates`)).json();
+            const group = g.groups[gi];
+            if (!group) { toast('分组已变化，正在刷新…'); await loadDuplicates(); return; }
+            const mergeIds = group.records.map(r => r.id).filter(id => id !== primaryId);
+            const operator = document.getElementById('detail-operator').value || '社工';
+            if (!confirm(`确认把 #${mergeIds.join('、#')} 合并进 #${primaryId}？\n主记录的空字段会用其他记录补齐，被合并记录标记为「已合并」，全部动作留痕。`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/merge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ primary_id: primaryId, merge_ids: mergeIds, operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '合并失败');
+                toast(json.message + '，重复标签已自动解除');
+                await refreshAll();
+            } catch (err) { toast('合并失败：' + err.message); }
+        }
+
+        async function markNotDuplicate(id) {
+            const operatorEl = document.getElementById('detail-operator');
+            const operator = (operatorEl && operatorEl.value) || '社工';
+            if (!confirm(`确认 #${id} 不是重复报名？\n将解除其「重复报名」标签并留痕。`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/mark_duplicate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_duplicate: false, operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                toast(`#${id} 已标记「非重复」，重复标签解除`);
+                await refreshAll();
+                if (currentDetailId === id) await showDetail(id);
+            } catch (err) { toast('操作失败：' + err.message); }
+        }
+
+        // ---------- 统一列表 ----------
+        async function loadEnrollments(page = 1) {
+            currentPage = page;
+            const params = new URLSearchParams();
+            params.set('page', page);
+            params.set('per_page', '10');
+            if (filters.source_type) params.set('source_type', filters.source_type);
+            if (filters.anomaly_tag) params.set('anomaly_tag', filters.anomaly_tag);
+            if (filters.status) params.set('status', filters.status);
+            if (filters.keyword) params.set('keyword', filters.keyword);
+            if (filters.import_batch_id) params.set('import_batch_id', filters.import_batch_id);
+            if (filters.activity_id) params.set('activity_id', filters.activity_id);
+            if (filters.attendance_status) params.set('attendance_status', filters.attendance_status);
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments?${params.toString()}`);
+                const json = await res.json();
+                renderList(json.data);
+                renderPagination(json.pagination);
+            } catch (err) {
+                document.getElementById('enrollment-list').innerHTML = `<tr><td colspan="10" class="px-4 py-8 text-center text-red-500">加载失败：${err.message}</td></tr>`;
+            }
+        }
+
+        function renderTags(item) {
+            const sys = item.system_tags || [];
+            const man = item.manual_tags || [];
+            const showSys = item.confirmed_ok ? [] : sys;
+            const mutedSys = item.confirmed_ok ? sys : [];
+            const parts = [
+                ...showSys.map(t => `<span class="tag tag-system" title="系统识别">${escapeHtml(t)}</span>`),
+                ...mutedSys.map(t => `<span class="tag tag-muted" title="系统曾报，已人工确认无误">${escapeHtml(t)}·已确认为误报</span>`),
+                ...man.map(t => `<span class="tag tag-manual" title="人工判断">${escapeHtml(t)}</span>`),
+                ...(item.confirmed_ok ? ['<span class="tag tag-confirmed">已人工确认</span>'] : []),
+                ...(item.not_duplicate ? ['<span class="tag tag-confirmed" title="人工判定非重复">非重复（人工）</span>'] : [])
+            ];
+            return parts.join('') || '<span class="text-gray-400 text-xs">无</span>';
+        }
+
+        function renderList(data) {
+            const tbody = document.getElementById('enrollment-list');
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">暂无数据</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = data.map(item => {
+                const hasAnomaly = item.anomaly_tags && item.anomaly_tags.length > 0;
+                let rowClass = 'hover:bg-gray-50 cursor-pointer';
+                if (item.status === '已合并') rowClass = 'merged-row cursor-pointer';
+                else if (item.confirmed_ok && !hasAnomaly) rowClass = 'confirmed-ok-row cursor-pointer';
+                else if (hasAnomaly) rowClass = 'anomaly-row cursor-pointer';
+
+                const statusClass = statusColors[item.status] || 'bg-gray-100 text-gray-800';
+                const statusHtml = item.status === '已合并' && item.merged_into
+                    ? `已并入 <a class="underline text-blue-600" onclick="event.stopPropagation();showDetail(${item.merged_into})">#${item.merged_into}</a>`
+                    : item.status;
+                const activityCell = item.activity_name
+                    ? `<a href="/static/activities.html" onclick="event.stopPropagation()" class="inline-block px-2 py-0.5 rounded text-xs bg-teal-50 text-teal-700 hover:bg-teal-100" title="归属活动">${escapeHtml(item.activity_name)}</a>`
+                    : '<span class="text-gray-300 text-xs">未归属</span>';
+                // 任务4：签到状态 chip
+                const attCls = item.attendance_status === '到场' ? 'bg-green-100 text-green-700'
+                    : item.attendance_status === '未到场' ? 'bg-red-100 text-red-700'
+                    : item.attendance_status === '临时到场' ? 'bg-amber-100 text-amber-700' : '';
+                const attMark = item.attendance_status
+                    ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs ${attCls} ml-1" title="现场备注：${escapeHtml(item.attendance_note || '无')}">✓${item.attendance_status}</span>` : '';
+                const manualMark = (item.manual_tags || []).length ? '<span class="ml-1 text-orange-600 text-xs">●人工</span>' : '';
+                const dupMark = (item.system_tags || []).some(t => t.startsWith('重复报名')) && !item.not_duplicate
+                    ? '<span class="ml-1 text-amber-600 text-xs" title="见上方疑似重复分组">⚠重复</span>' : '';
+                const historyMark = item.history_status === 'confirmed'
+                    ? `<span class="ml-1 text-violet-600 text-xs" title="已确认写入历史信息库档案 #${item.history_profile_id}">☰已建档</span>`
+                    : (item.history_pending
+                        ? `<span class="ml-1 text-violet-500 text-xs" title="命中历史信息库：${(item.history_match_reasons || []).join('、')}，点击行核对">☰命中历史</span>`
+                        : '');
+
+                return `
+                    <tr class="${rowClass}" id="list-row-${item.id}" onclick="showDetail(${item.id})">
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.id}</td>
+                        <td class="px-4 py-3 text-sm">${activityCell}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.student_real_name || '<span class="text-gray-400">（空）</span>'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${item.student_nickname || '-'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${item.parent_name || '<span class="text-gray-400">（空）</span>'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${item.phone || '-'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700"><span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">${sourceLabels[item.source_type] || item.source_type}</span></td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${item.source_time || '-'}</td>
+                        <td class="px-4 py-3">${renderTags(item)}${manualMark}${dupMark}${historyMark}</td>
+                        <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs ${statusClass}">${statusHtml}</span>${attMark}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderPagination(pagination) {
+            const { page, per_page, total, pages } = pagination;
+            document.getElementById('pagination-info').textContent = `共 ${total} 条，第 ${page}/${pages || 1} 页`;
+            let html = '';
+            if (page > 1) html += `<button onclick="loadEnrollments(${page - 1})" class="px-3 py-1 text-sm border rounded hover:bg-gray-100">上一页</button>`;
+            if (page < pages) html += `<button onclick="loadEnrollments(${page + 1})" class="px-3 py-1 text-sm border rounded hover:bg-gray-100">下一页</button>`;
+            document.getElementById('pagination-buttons').innerHTML = html;
+        }
+
+        function updateFilters() {
+            filters.source_type = document.getElementById('filter-source').value;
+            filters.anomaly_tag = document.getElementById('filter-anomaly').value;
+            filters.status = document.getElementById('filter-status').value;
+            filters.import_batch_id = document.getElementById('filter-batch').value.trim();
+            filters.keyword = document.getElementById('filter-keyword').value;
+            filters.activity_id = document.getElementById('filter-activity').value;
+            filters.attendance_status = document.getElementById('filter-attendance').value;
+            loadEnrollments(1);
+        }
+
+        function resetFilters() {
+            ['filter-source', 'filter-anomaly', 'filter-status', 'filter-attendance', 'filter-batch', 'filter-keyword', 'filter-activity'].forEach(id => document.getElementById(id).value = '');
+            filters = { source_type: '', anomaly_tag: '', status: '', keyword: '', import_batch_id: '', activity_id: '', attendance_status: '' };
+            loadEnrollments(1);
+        }
+
+        function debounce(fn, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => fn.apply(this, args), wait);
+            };
+        }
+
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        // ---------- 详情（可直接编辑字段） ----------
+        async function showDetail(id) {
+            currentDetailId = id;
+            await renderDetail(id);
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        async function renderDetail(id) {
+            try {
+                const [detailRes, logsRes, histRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/enrollments/${id}`),
+                    fetch(`${API_BASE}/api/enrollments/${id}/logs`),
+                    fetch(`${API_BASE}/api/enrollments/${id}/history_matches`)
+                ]);
+                const json = await detailRes.json();
+                const logsJson = await logsRes.json().catch(() => ({ data: [] }));
+                const histJson = await histRes.json().catch(() => ({ data: { matches: [], history_status: '', history_profile_id: 0 } }));
+                const item = json.data;
+                const logs = logsJson.data || [];
+                const hist = histJson.data || { matches: [], history_status: '', history_profile_id: 0 };
+
+                const editableRow = (field, label, value) => `
+                    <div class="grid grid-cols-3 gap-4 border-b pb-2 items-center">
+                        <div class="text-gray-500">${label}</div>
+                        <div class="col-span-2">
+                            <input type="text" value="${escapeHtml(value || '')}"
+                                   class="editable w-full bg-transparent text-sm px-1 py-0.5"
+                                   onchange="saveDetailField(${id}, '${field}', this.value)"
+                                   placeholder="点击编辑，回车或点击别处保存">
+                        </div>
+                    </div>`;
+
+                const logsHtml = logs.length
+                    ? logs.map(l => `<div class="log-item text-gray-600">[${l.operated_at}] ${escapeHtml(l.operator || '系统')}：${describeLog(l)}</div>`).join('')
+                    : '<div class="text-gray-400 text-xs">暂无人工操作记录</div>';
+
+                document.getElementById('detail-content').innerHTML = `
+                    <div class="space-y-3 text-sm">
+                        ${item.merged_into ? `
+                        <div class="bg-blue-50 border border-blue-200 rounded p-2 text-blue-800 text-xs">
+                            该记录已被合并进 #${item.merged_into}，仅为留痕保留。
+                        </div>` : ''}
+                        ${editableRow('student_real_name', '学生真名 ✎', item.student_real_name)}
+                        ${editableRow('student_nickname', '学生小名 ✎', item.student_nickname)}
+                        ${editableRow('parent_name', '家长姓名 ✎', item.parent_name)}
+                        ${editableRow('phone', '手机号 ✎', item.phone)}
+                        ${editableRow('note', '备注 ✎', item.note)}
+
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">与孩子关系</div>
+                            <div class="col-span-2">${item.relation || '—'}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">所属活动</div>
+                            <div class="col-span-2">
+                                ${item.activity_name
+                                    ? `<span class="inline-block px-2 py-0.5 rounded text-xs bg-teal-50 text-teal-700">${escapeHtml(item.activity_name)}</span>
+                                       <a href="/static/activities.html" class="underline text-teal-600 text-xs ml-1">在活动管理中查看归档 →</a>`
+                                    : '<span class="text-gray-300 text-xs">未归属</span>'}
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">来源类型</div>
+                            <div class="col-span-2">${sourceLabels[item.source_type] || item.source_type}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">来源用户 (source_user)</div>
+                            <div class="col-span-2 font-mono text-xs bg-gray-100 rounded px-2 py-1">${item.source_user || '-'}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">来源时间 (source_time)</div>
+                            <div class="col-span-2">${item.source_time || '-'}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">导入批次号</div>
+                            <div class="col-span-2 font-mono text-xs bg-gray-100 rounded px-2 py-1">${item.import_batch_id || '无'}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">异常标签（实时）</div>
+                            <div class="col-span-2">${renderTags(item)}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2 items-center">
+                            <div class="text-gray-500">状态</div>
+                            <div class="col-span-2 flex items-center gap-2">
+                                <select id="detail-status" class="border rounded px-2 py-1 text-sm" onchange="saveDetailField(${id}, 'status', this.value)">
+                                    ${['待处理', '已确认', '已修正', '已合并'].map(s => `<option value="${s}" ${s === item.status ? 'selected' : ''}>${s}</option>`).join('')}
+                                </select>
+                                <span class="text-xs text-gray-400">修改状态同样留痕</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2 items-center">
+                            <div class="text-gray-500">家长确认 / 授权</div>
+                            <div class="col-span-2 flex flex-wrap items-center gap-2 text-xs">
+                                ${item.parent_confirmed
+                                    ? '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">✓ 家长已确认报名信息</span>'
+                                    : '<span class="px-2 py-0.5 rounded bg-gray-100 text-gray-400">家长未确认</span>'}
+                                ${item.parent_authorized
+                                    ? '<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700">已授权活动使用（如照片）</span>'
+                                    : '<span class="px-2 py-0.5 rounded bg-gray-100 text-gray-400">未授权</span>'}
+                                ${item.parent_confirmed || item.parent_authorized
+                                    ? `<a href="/static/parent.html" class="underline text-gray-400">家长端可在「我的报名」操作 →</a>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="border border-violet-200 bg-violet-50/60 rounded-lg p-3" id="sensitive-card-${id}">
+                            <div class="text-sm font-semibold text-violet-800 mb-2">🔒 敏感信息与活动服务提示
+                                <span class="text-xs font-normal text-violet-400">（过敏原/情绪触发点/如厕习惯仅社工/管理员可见；每次查看与修改都写入审计）</span>
+                            </div>
+                            ${window.__me && window.__me.permissions.view_sensitive ? `
+                                <div class="text-xs text-violet-700 mb-2">
+                                    当前列表接口已脱敏。点击「查看」加载真实值（将记录：谁在何时查看了谁）。
+                                    <button onclick="loadSensitive(${id})" class="ml-1 px-3 py-1 rounded bg-violet-600 text-white text-xs hover:bg-violet-700">查看 / 编辑敏感字段</button>
+                                </div>
+                                <div id="sensitive-body-${id}" class="text-xs text-violet-400">${escapeHtml(item.allergy_info || '') === '仅社工可见' ? '（尚未加载，列表显示的为脱敏占位）' : ''}</div>
+                            ` : `
+                                <div class="text-xs text-gray-500 bg-gray-100 rounded p-2">
+                                    🔒 过敏原 / 情绪触发点 / 如厕习惯：<b>仅社工可见</b>——你当前角色（${window.__me ? window.__me.role_label : ''}）无敏感字段权限，接口层面也不返回真实值。
+                                </div>
+                            `}
+                        </div>
+
+                        <div class="border border-amber-200 bg-amber-50/60 rounded-lg p-3">
+                            <div class="text-sm font-semibold text-amber-800 mb-2">✓ 现场签到回传（纸质签到表差异誊录）</div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                ${['到场', '未到场', '临时到场'].map(s => {
+                                    const on = item.attendance_status === s;
+                                    const cls = s === '到场' ? 'bg-green-600' : s === '未到场' ? 'bg-red-600' : 'bg-amber-500';
+                                    return `<button onclick="setAttendanceFromDetail(${item.id}, '${s}')" class="px-3 py-1.5 text-xs text-white rounded ${on ? cls : 'bg-gray-300 hover:bg-gray-400'}">${on ? '● ' : ''}${s}</button>`;
+                                }).join('')}
+                                ${item.attendance_status ? `<button onclick="setAttendanceFromDetail(${item.id}, '')" class="px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100">清除</button>` : ''}
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 mt-2">
+                                <input type="text" id="detail-att-note" value="${escapeHtml(item.attendance_note || '')}" placeholder="现场备注（如：临时到场，家长陪同）"
+                                       class="border rounded px-2 py-1 text-xs w-64">
+                                <button onclick="saveAttendanceNote(${item.id})" class="px-3 py-1.5 text-xs text-amber-700 bg-white border border-amber-300 rounded hover:bg-amber-100">保存备注</button>
+                                ${item.attendance_time ? `<span class="text-xs text-gray-500">回传 ${item.attendance_time} · ${escapeHtml(item.attendance_operator || '')}</span>` : '<span class="text-xs text-gray-400">尚未记录</span>'}
+                            </div>
+                        </div>
+
+                        ${!item.merged_into ? `
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            <button onclick="markNotDuplicate(${item.id})" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200">标记「非重复」（解除重复标签）</button>
+                        </div>` : ''}
+
+                        ${renderHistoryCard(item, hist)}
+
+                        <div class="border rounded-lg p-3 bg-gray-50">
+                            <div class="text-sm font-medium text-gray-700 mb-2">人工处理留痕（${logs.length} 条）</div>
+                            ${logsHtml}
+                        </div>
+                    </div>
+                `;
+            } catch (err) { toast('加载详情失败：' + err.message); }
+        }
+
+        // ---------- 任务5：敏感字段查看/编辑（仅社工/管理员，行为写审计） ----------
+        const SENSITIVE_LABELS = { allergy_info: '过敏原', emotion_triggers: '情绪触发点', toilet_habits: '如厕习惯' };
+        const TIP_FIELDS = ['陪护重点', '沟通方式', '安全注意事项', '饮食注意', '携带物品', '其他提示'];
+
+        async function loadSensitive(id) {
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/sensitive`);
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '加载失败');
+                const d = json.data;
+                let tips = json.data.service_tips || {};
+                if (typeof tips === 'string') { try { tips = JSON.parse(tips || '{}'); } catch (e) { tips = {}; } }
+                const fieldRow = (key) => `
+                    <div class="flex items-start gap-2 mb-1.5">
+                        <span class="text-violet-700 w-20 shrink-0 pt-1.5">${SENSITIVE_LABELS[key]}</span>
+                        <input id="sens-${key}" value="${escapeHtml(d[key] || '')}" class="flex-1 border rounded px-2 py-1.5 text-xs">
+                    </div>`;
+                const tipRow = (k) => `
+                    <div class="flex items-start gap-2 mb-1.5">
+                        <span class="text-sky-700 w-20 shrink-0 pt-1.5">${k}</span>
+                        <input id="tip-${k}" value="${escapeHtml(tips[k] || '')}" placeholder="按活动勾选的维度填写，志愿者端才会显示" class="flex-1 border rounded px-2 py-1.5 text-xs">
+                    </div>`;
+                document.getElementById(`sensitive-body-${id}`).innerHTML = `
+                    <div class="bg-white border border-violet-200 rounded p-3">
+                        ${['allergy_info', 'emotion_triggers', 'toilet_habits'].map(fieldRow).join('')}
+                        <div class="text-xs font-semibold text-sky-700 mt-2 mb-1">活动服务提示（志愿者端可见内容，按活动启用维度下发）</div>
+                        ${TIP_FIELDS.map(tipRow).join('')}
+                        <div class="flex items-center gap-2 mt-2">
+                            <button onclick="saveSensitive(${id})" class="px-3 py-1.5 rounded bg-violet-600 text-white text-xs hover:bg-violet-700">保存（写审计）</button>
+                            <span class="text-xs text-gray-400">修改会记录在下方留痕与审计日志中</span>
+                        </div>
+                    </div>`;
+            } catch (err) { toast('敏感字段加载失败：' + err.message); }
+        }
+
+        async function saveSensitive(id) {
+            const body = {};
+            ['allergy_info', 'emotion_triggers', 'toilet_habits'].forEach(k => body[k] = document.getElementById(`sens-${k}`).value);
+            const tips = {};
+            TIP_FIELDS.forEach(k => { const v = document.getElementById(`tip-${k}`).value.trim(); if (v) tips[k] = v; });
+            body.service_tips = tips;
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/sensitive`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '保存失败');
+                toast(json.message || '已保存');
+                await renderDetail(id);
+                loadEnrollments(currentPage);
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        // ---------- 任务4：现场签到回传（详情页） ----------
+        async function setAttendanceFromDetail(id, status) {
+            const note = document.getElementById('detail-att-note')?.value.trim() || '';
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/attendance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status, note, clear: !status })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '回传失败');
+                toast(json.message || '已记录签到结果');
+                await renderDetail(id);
+                loadEnrollments(currentPage);
+            } catch (err) { toast('签到回传失败：' + err.message); }
+        }
+
+        async function saveAttendanceNote(id) {
+            const note = document.getElementById('detail-att-note')?.value.trim() || '';
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/attendance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '保存失败');
+                toast(json.message || '备注已保存');
+                await renderDetail(id);
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        // ---------- 任务3：历史信息库命中核对（只提示、人工拍板，不自动合并） ----------
+        function renderHistoryCard(item, hist) {
+            if (item.merged_into) return '';
+            const status = hist.history_status || '';
+
+            if (status === 'confirmed') {
+                return `
+                    <div class="border border-violet-200 bg-violet-50 rounded-lg p-3">
+                        <div class="text-sm font-semibold text-violet-800">✓ 已确认写入历史信息库（档案 #${hist.history_profile_id}）</div>
+                        <p class="text-xs text-violet-600 mt-1">该儿童的特征已沉淀，之后的新报名会自动与档案比对；档案可在 <a href="/static/profiles.html" class="underline">历史信息库</a> 查看、修正。</p>
+                    </div>`;
+            }
+            if (status === 'ignored') {
+                return `
+                    <div class="border border-gray-200 bg-gray-50 rounded-lg p-3">
+                        <div class="text-sm text-gray-600">已人工判定：与命中的历史档案不是同一儿童，提示已忽略（留痕可查）。</div>
+                    </div>`;
+            }
+
+            const matches = hist.matches || [];
+            if (matches.length === 0) {
+                return `
+                    <div class="border border-gray-200 bg-gray-50 rounded-lg p-3">
+                        <div class="text-sm text-gray-600">未命中历史档案。</div>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <button onclick="confirmHistory(${item.id}, 0, true)" class="px-3 py-1.5 text-xs text-white bg-violet-600 rounded hover:bg-violet-700">写入历史信息库（沉淀建档）</button>
+                            <span class="text-xs text-gray-400 self-center">建档后，下次报名自动比对复用</span>
+                        </div>
+                    </div>`;
+            }
+
+            const matchRows = matches.map(m => {
+                const p = m.profile;
+                return `
+                    <div class="flex flex-wrap items-center justify-between gap-2 bg-white border border-violet-100 rounded px-3 py-2">
+                        <div class="text-sm">
+                            <span class="font-semibold text-gray-800">档案 #${p.id} ${escapeHtml(p.student_real_name) || '（真名空）'}（${escapeHtml(p.student_nickname) || '无小名'}）</span>
+                            <span class="text-gray-500 text-xs ml-1">家长 ${escapeHtml(p.parent_name) || '空'} · ${escapeHtml(p.phone) || '无手机号'} · 历史报名 ${p.enrollment_count} 次</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${m.reasons.map(r => `<span class="inline-block px-2 py-0.5 rounded text-xs bg-violet-100 text-violet-700">${escapeHtml(r)}</span>`).join('')}
+                            <button onclick="confirmHistory(${item.id}, ${p.id}, true)" class="px-3 py-1 text-xs text-white bg-violet-600 rounded hover:bg-violet-700 whitespace-nowrap">确认同一儿童，写入档案</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            return `
+                <div class="border border-violet-300 bg-violet-50 rounded-lg p-3">
+                    <div class="text-sm font-bold text-violet-800 mb-1">☰ 命中历史信息库 · ${matches.length} 条，请人工核对</div>
+                    <p class="text-xs text-violet-600 mb-2">系统只提示、不自动合并；缺失字段已按最强命中档案自动补全（只补空、不覆盖，留痕可查）。确认是同一儿童 → 点对应档案的确认按钮；都不是 → 沉淀为新档案或忽略。</p>
+                    <div class="space-y-2">${matchRows}</div>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <button onclick="autofillHistory(${item.id})" class="px-3 py-1.5 text-xs text-cyan-700 bg-white border border-cyan-300 rounded hover:bg-cyan-50" title="按命中的历史档案补全本条缺失字段（不覆盖已有值）">↻ 按档案补全缺失字段</button>
+                        <button onclick="confirmHistory(${item.id}, 0, true)" class="px-3 py-1.5 text-xs text-violet-700 bg-white border border-violet-300 rounded hover:bg-violet-100">以上都不是，沉淀为新档案</button>
+                        <button onclick="confirmHistory(${item.id}, 0, false)" class="px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100">忽略提示（不建档）</button>
+                    </div>
+                </div>`;
+        }
+
+        // 任务3.5：手动按档案补全（自动补全只在提交时做一次，这里是人工按需触发）
+        async function autofillHistory(id, profileId = 0) {
+            const operator = document.getElementById('detail-operator').value.trim() || '社工';
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/history_autofill`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_id: profileId, operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                toast(json.message || '已补全');
+                await renderDetail(id);
+                await refreshAll();
+            } catch (err) { toast('补全失败：' + err.message); }
+        }
+
+        async function confirmHistory(id, profileId, isSame) {
+            const operator = document.getElementById('detail-operator').value.trim() || '社工';
+            let tip;
+            if (!isSame) tip = '确认该报名与命中的历史档案不是同一儿童？忽略后不再提示（留痕可查）。';
+            else if (profileId > 0) tip = `确认该报名与历史档案 #${profileId} 是同一儿童？\n确认后档案将更新（报名次数+1、空字段补全、过期信息以本次报名为准）。`;
+            else tip = '把该报名沉淀为新档案写入历史信息库？';
+            if (!confirm(tip)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}/history_confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_same: isSame, profile_id: profileId, operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                toast(json.message || '已记录');
+                await renderDetail(id);
+                loadEnrollments();
+                loadStats();
+            } catch (err) { toast('操作失败：' + err.message); }
+        }
+
+        function describeLog(l) {
+            const map = {
+                student_real_name: '学生真名', student_nickname: '学生小名', parent_name: '家长姓名',
+                phone: '手机号', relation: '与孩子关系', note: '备注', status: '状态', merged: '合并'
+            };
+            const f = map[l.field_name] || l.field_name;
+            switch (l.operation_type) {
+                case 'edit': return `修改「${f}」：${l.old_value || '空'} → ${l.new_value || '空'}`;
+                case 'manual_tag': return `手动添加异常标签「${l.tag}」`;
+                case 'remove_manual_tag': return `移除手动异常标签「${l.tag}」`;
+                case 'confirm_ok': return '人工确认无误，解除系统标红';
+                case 'confirm_revoke': return `编辑后出现新异常（${l.new_value || ''}），自动撤销「确认无误」`;
+                case 'merge': return `合并操作：把 ${l.old_value} 并入本记录`;
+                case 'merge_fill': return `合并补全「${f}」：空 → ${l.new_value}（${l.tag}）`;
+                case 'merged_into': return `本记录被合并进 ${l.new_value}，保留留痕`;
+                case 'mark_not_duplicate': return '人工判定「非重复」，解除重复标签';
+                case 'mark_duplicate_again': return '取消「非重复」，恢复重复检测';
+                case 'history_confirm': return `历史信息库核对：${l.tag || '确认同一儿童'}，写入档案 ${l.new_value || ''}`;
+                case 'history_ignore': return `历史信息库核对：${l.new_value || '判定不是同一儿童'}${l.old_value ? `（原命中 ${l.old_value}）` : ''}，忽略提示`;
+                case 'history_autofill': return `历史档案自动补全「${f}」：空 → ${l.new_value}（${l.tag || ''}），请人工复核`;
+                case 'attendance': return l.field_name === 'attendance_note'
+                    ? `签到现场备注：${l.old_value || '（空）'} → ${l.new_value || '（空）'}`
+                    : `签到结果回传：${l.old_value || '（未记录）'} → ${l.new_value}${l.tag ? `（现场备注：${l.tag}）` : ''}`;
+                default: return escapeHtml(JSON.stringify(l));
+            }
+        }
+
+        async function saveDetailField(id, field, value) {
+            const operator = document.getElementById('detail-operator').value.trim() || '社工';
+            try {
+                const body = { operator };
+                body[field] = (value || '').trim();
+                const res = await fetch(`${API_BASE}/api/enrollments/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '保存失败');
+                toast(`已保存「${fieldLabels[field] || field}」，异常标签已实时重算`);
+                await renderDetail(id);
+                await refreshAll();
+                const row = document.getElementById(`list-row-${id}`);
+                if (row) row.classList.add('flash');
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        // ---------- 任务3.5：新增报名（必须归属进行中的活动） ----------
+        function openCreateModal() {
+            document.getElementById('create-result').classList.add('hidden');
+            document.getElementById('create-modal').classList.remove('hidden');
+        }
+
+        function closeCreateModal() {
+            document.getElementById('create-modal').classList.add('hidden');
+        }
+
+        async function submitCreate() {
+            const activityId = document.getElementById('create-activity').value;
+            if (!activityId) { toast('请先选择归属活动（每条报名必须归属一个活动）'); return; }
+            const payload = {
+                activity_id: parseInt(activityId, 10),
+                source_type: document.getElementById('create-source').value,
+                source_user: document.getElementById('create-source-user').value.trim(),
+                student_real_name: document.getElementById('create-real').value.trim(),
+                student_nickname: document.getElementById('create-nick').value.trim(),
+                parent_name: document.getElementById('create-parent').value.trim(),
+                phone: document.getElementById('create-phone').value.trim(),
+                relation: document.getElementById('create-relation').value.trim(),
+                note: document.getElementById('create-note').value.trim(),
+            };
+            if (!payload.student_real_name && !payload.student_nickname) {
+                toast('学生真名 / 小名至少填一个'); return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/enrollments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '提交失败');
+                const d = json.data[0];
+                const matches = d.history_matches || [];
+                const box = document.getElementById('create-result');
+                const filledLogs = []; // 命中详情页可查自动补全留痕
+                box.className = 'border rounded p-3 text-xs ' + (matches.length ? 'border-violet-300 bg-violet-50' : 'border-green-300 bg-green-50');
+                box.innerHTML = `
+                    <div class="font-bold mb-1 ${matches.length ? 'text-violet-800' : 'text-green-800'}">✓ 报名成功，已归属「${escapeHtml(d.activity_name || '')}」（记录 #${d.id}）</div>
+                    ${matches.length ? `
+                        <div class="text-violet-700">☰ 命中历史信息库 ${matches.length} 条：${matches.map(m => `档案 #${m.profile_id}（${escapeHtml(m.reasons.join('、'))}）`).join('；')}</div>
+                        <div class="text-violet-600 mt-1">缺失字段已按档案自动补全（只补空、不覆盖）——请到详情页人工复核后再确认；<a class="underline" onclick="closeCreateModal();showDetail(${d.id})">打开详情核对 →</a></div>
+                        ${filledLogs.length ? '' : ''}
+                    ` : '<div class="text-green-700">未命中历史档案。可在详情页「沉淀建档」，下次报名自动比对复用。</div>'}
+                `;
+                box.classList.remove('hidden');
+                toast(matches.length ? '报名成功：命中历史信息库，请复核' : '报名成功');
+                await refreshAll();
+            } catch (err) { toast('提交失败：' + err.message); }
+        }
+
+        function closeModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+            currentDetailId = null;
+        }
+
+        function exportData(format) {
+            const params = new URLSearchParams();
+            if (filters.source_type) params.set('source_type', filters.source_type);
+            if (filters.anomaly_tag) params.set('anomaly_tag', filters.anomaly_tag);
+            if (filters.status) params.set('status', filters.status);
+            if (filters.keyword) params.set('keyword', filters.keyword);
+            if (filters.activity_id) params.set('activity_id', filters.activity_id);
+            if (filters.attendance_status) params.set('attendance_status', filters.attendance_status);
+            window.open(`${API_BASE}/api/export/${format}?${params.toString()}`, '_blank');
+        }
+
+        // 任务4：签到表 / 台账导出（按当前「所属活动」筛选；未选活动时给出台账全量确认）
+        function exportSheet() {
+            if (!filters.activity_id) { toast('请先在「所属活动」筛选中选择一个活动，再导出签到表'); return; }
+            window.open(`${API_BASE}/api/activities/${filters.activity_id}/signup_sheet?format=html`, '_blank');
+        }
+
+        function exportLedger() {
+            const q = filters.activity_id ? `?activity_id=${filters.activity_id}&format=xlsx` : '?format=xlsx';
+            window.open(`${API_BASE}/api/export/ledger${q}`, '_blank');
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 任务5：启动门禁——未登录/待审核/停用账号不能进入管理界面，先校验登录态与权限再初始化
+        bootGate({ minPerm: "manage_enrollments", minPermLabel: "报名管理与异常处理" }).then(user => {
+            if (!user) return;
+            init();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/archive/favicon.svg" type="image/svg+xml">
+<title>童颜守护 · 儿童照片隐私处理</title>
+<style>
+:root{
+  --brand:#2f6bff; --brand-d:#1f4fd0; --brand-l:#eaf1ff;
+  --ok:#12a150; --ok-l:#e6f7ed; --warn:#e08a00; --warn-l:#fff4e0;
+  --danger:#d93a3a; --danger-l:#fdecec;
+  --ink:#1b2330; --ink-2:#5a6675; --ink-3:#8a95a5;
+  --line:#e3e8ef; --bg:#f5f7fa; --card:#fff;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6}
+header{background:#fff;border-bottom:1px solid var(--line);padding:0 20px;
+  display:flex;align-items:center;gap:14px;height:58px;position:sticky;top:0;z-index:20}
+.logo{font-size:16px;font-weight:700}
+.logo span{color:var(--brand)}
+header nav{margin-left:auto;display:flex;gap:8px}
+.nav-link{color:var(--ink-2);text-decoration:none;padding:6px 12px;border-radius:8px;font-size:13px}
+.nav-link:hover{background:var(--brand-l);color:var(--brand-d)}
+.wrap{max-width:1280px;margin:0 auto;padding:18px}
+.tip{background:var(--warn-l);border:1px solid #f2d9a8;color:#7a5300;
+  padding:10px 14px;border-radius:10px;margin-bottom:16px;font-size:13px}
+.layout{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+.card h3{margin:0 0 10px;font-size:14px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:22px 12px;text-align:center;
+  color:var(--ink-3);cursor:pointer;font-size:13px}
+.drop:hover{border-color:var(--brand);color:var(--brand)}
+.thumbs{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}
+.thumb{display:flex;gap:10px;align-items:center;padding:6px;border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;background:#fff}
+.thumb.on{border-color:var(--brand);background:var(--brand-l)}
+.thumb img{width:52px;height:40px;object-fit:cover;border-radius:6px;background:#eee}
+.thumb .meta{min-width:0;flex:1}
+.thumb .nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumb .st{font-size:11px;color:var(--ink-3)}
+.thumb .del{color:var(--ink-3);border:0;background:transparent;cursor:pointer;font-size:16px}
+.stage{background:#f0f2f5;border-radius:10px;min-height:280px;display:flex;
+  align-items:center;justify-content:center;padding:12px;overflow:auto}
+#view{max-width:100%;border-radius:6px;box-shadow:0 2px 12px rgba(20,30,60,.12);cursor:crosshair}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+button{font-family:inherit;font-size:13px;padding:7px 14px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--ink)}
+button:hover{border-color:var(--brand);color:var(--brand-d)}
+button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+button.primary:hover{background:var(--brand-d);color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+select,input[type=range]{font-family:inherit;font-size:13px;padding:6px 8px;
+  border:1px solid var(--line);border-radius:8px;background:#fff}
+label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2)}
+.hint{font-size:12px;color:var(--ink-3)}
+.saved{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.sv{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;position:relative}
+.sv img{width:100%;height:110px;object-fit:cover;display:block;background:#eee}
+.sv .b{padding:8px;font-size:12px;color:var(--ink-2);word-break:break-all}
+.sv .x{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.45);color:#fff;border:0;
+  border-radius:50%;width:22px;height:22px;line-height:20px;text-align:center;cursor:pointer;padding:0}
+.empty{color:var(--ink-3);font-size:13px;padding:8px 0}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--brand-l);color:var(--brand-d)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">童颜守护 · <span>儿童照片隐私处理</span></div>
+  <nav>
+    <a class="nav-link" href="/">工作台首页</a>
+    <a class="nav-link" href="/archive">活动档案管理台</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="tip">
+    照片的检测与打码全部在<strong>你的浏览器本地</strong>完成，原图不会上传。只有在点击「保存到服务器」时，才会把<strong>已打码</strong>的图片传到工作台归档。
+    自动年龄判断存在误判（尤其合影、远景），<strong>导出前请人工复核</strong>。
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="card">
+        <h3>照片</h3>
+        <div class="drop" id="drop">点击选择或拖入照片<br><span class="hint">支持多选，JPG / PNG</span></div>
+        <input type="file" id="file" accept="image/*" multiple hidden>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3>处理 <span class="tag" id="curName">未选择</span></h3>
+        <div class="stage"><canvas id="view"></canvas></div>
+        <div class="bar">
+          <button class="primary" id="btnAuto">自动识别儿童</button>
+          <button id="btnAutoAll">全部自动识别</button>
+          <button id="btnClear">清除标记</button>
+          <span class="hint">在画面上拖拽可手动补框，点击框右上角 × 删除</span>
+        </div>
+        <div class="bar">
+          <span class="hint">效果</span>
+          <select id="mode">
+            <option value="mosaic">马赛克</option>
+            <option value="blur">高斯模糊</option>
+            <option value="smile">卡通笑脸</option>
+          </select>
+          <span class="hint">强度</span>
+          <input type="range" id="strength" min="1" max="10" value="5">
+          <label class="chk"><input type="checkbox" id="childOnly" checked>只处理判定为儿童的人脸</label>
+          <label class="chk"><input type="checkbox" id="showBox" checked>显示标记框</label>
+        </div>
+        <div class="bar">
+          <button class="primary" id="btnSave">保存到服务器</button>
+          <button id="btnDownload">下载到本地</button>
+          <span class="hint" id="msg"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>已保存记录（服务端）</h3>
+        <div class="saved" id="saved"><div class="empty">加载中…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
+<script>
+var MAX_SIDE = 1600;
+var photos = [];      // {id,name,img,work,boxes:[],done}
+var curId = null;
+var modelsReady = false;
+var modelsLoading = false;
+var drag = null;      // {x0,y0,x1,y1}
+var hoverBoxIndex = -1;
+
+var $ = function(id){ return document.getElementById(id); };
+var view = $('view'), vctx = view.getContext('2d');
+
+function cur(){ for(var i=0;i<photos.length;i++) if(photos[i].id===curId) return photos[i]; return null; }
+function say(t, bad){ $('msg').textContent = t || ''; $('msg').style.color = bad ? '#d93a3a' : '#5a6675'; }
+
+/* ---------- 导入 ---------- */
+$('drop').onclick = function(){ $('file').click(); };
+$('file').onchange = function(e){ addFiles(e.target.files); e.target.value=''; };
+['dragover','dragenter'].forEach(function(ev){
+  $('drop').addEventListener(ev, function(e){ e.preventDefault(); });
+});
+$('drop').addEventListener('drop', function(e){ e.preventDefault(); addFiles(e.dataTransfer.files); });
+
+function addFiles(list){
+  var arr = Array.prototype.slice.call(list || []).filter(function(f){ return /^image\//.test(f.type); });
+  if(!arr.length) return;
+  arr.forEach(function(f){
+    var id = 'p' + Date.now() + Math.random().toString(36).slice(2,6);
+    var photo = { id:id, name:f.name, img:null, work:null, boxes:[], done:false };
+    photos.push(photo);
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var img = new Image();
+      img.onload = function(){
+        var s = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        photo.img = img; photo.work = c;
+        if(!curId) curId = id;
+        renderThumbs(); render();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  });
+  renderThumbs();
+}
+
+function renderThumbs(){
+  var box = $('thumbs');
+  box.innerHTML = '';
+  photos.forEach(function(p){
+    var d = document.createElement('div');
+    d.className = 'thumb' + (p.id === curId ? ' on' : '');
+    var img = document.createElement('img');
+    img.src = p.work ? p.work.toDataURL('image/jpeg', 0.6) : '';
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+    var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
+    var st = document.createElement('div'); st.className = 'st';
+    st.textContent = p.boxes.length ? (p.boxes.length + ' 个标记') : (p.work ? '待识别' : '读取中…');
+    meta.appendChild(nm); meta.appendChild(st);
+    var del = document.createElement('button');
+    del.className = 'del'; del.textContent = '×'; del.title = '移除';
+    del.onclick = function(e){
+      e.stopPropagation();
+      photos = photos.filter(function(x){ return x.id !== p.id; });
+      if(curId === p.id) curId = photos.length ? photos[0].id : null;
+      renderThumbs(); render();
+    };
+    d.onclick = function(){ curId = p.id; renderThumbs(); render(); };
+    d.appendChild(img); d.appendChild(meta); d.appendChild(del);
+    box.appendChild(d);
+  });
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  var p = cur();
+  if(!p || !p.work){
+    view.width = 0; view.height = 0;
+    $('curName').textContent = '未选择';
+    return;
+  }
+  $('curName').textContent = p.name;
+  view.width = p.work.width; view.height = p.work.height;
+  var ctx = p.work.getContext('2d');
+  ctx.clearRect(0, 0, p.work.width, p.work.height);
+  ctx.drawImage(p.img, 0, 0, p.work.width, p.work.height);
+
+  var childOnly = $('childOnly').checked;
+  var mode = $('mode').value;
+  var strength = parseInt($('strength').value, 10);
+
+  p.boxes.forEach(function(b){
+    if(childOnly && !b.child) return;
+    if(mode === 'mosaic') mosaic(ctx, p, b, strength);
+    else if(mode === 'blur') blurBox(ctx, p, b, strength);
+    else smile(ctx, b);
+  });
+
+  vctx.clearRect(0, 0, view.width, view.height);
+  vctx.drawImage(p.work, 0, 0);
+
+  if($('showBox').checked){
+    p.boxes.forEach(function(b, i){
+      vctx.save();
+      vctx.strokeStyle = b.child ? '#12a150' : '#e08a00';
+      vctx.lineWidth = Math.max(2, view.width / 400);
+      vctx.strokeRect(b.x, b.y, b.w, b.h);
+      vctx.fillStyle = b.child ? '#12a150' : '#e08a00';
+      vctx.font = Math.round(Math.max(11, b.h * 0.16)) + 'px sans-serif';
+      var label = b.child ? ('儿童 ' + (b.age != null ? b.age + '岁' : '')) : ('成人 ' + (b.age != null ? b.age + '岁' : ''));
+      vctx.fillText(label, b.x + 2, b.y - 4);
+      // 删除角标
+      vctx.fillStyle = 'rgba(0,0,0,.55)';
+      vctx.fillRect(b.x + b.w - 16, b.y, 16, 16);
+      vctx.fillStyle = '#fff';
+      vctx.font = '12px sans-serif';
+      vctx.fillText('×', b.x + b.w - 12, b.y + 12);
+      vctx.restore();
+    });
+  }
+  if(drag){
+    vctx.save();
+    vctx.strokeStyle = '#2f6bff'; vctx.lineWidth = 2; vctx.setLineDash([6, 4]);
+    vctx.strokeRect(drag.x0, drag.y0, drag.x1 - drag.x0, drag.y1 - drag.y0);
+    vctx.restore();
+  }
+}
+
+function mosaic(ctx, p, b, strength){
+  var block = Math.max(4, Math.round(b.h / (14 - strength)));
+  var t = document.createElement('canvas');
+  t.width = Math.max(1, Math.round(b.w)); t.height = Math.max(1, Math.round(b.h));
+  t.getContext('2d').drawImage(p.work, b.x, b.y, b.w, b.h, 0, 0, t.width, t.height);
+  var s = document.createElement('canvas');
+  s.width = Math.max(2, Math.round(t.width / block));
+  s.height = Math.max(2, Math.round(t.height / block));
+  var sc = s.getContext('2d');
+  sc.imageSmoothingEnabled = true;
+  sc.drawImage(t, 0, 0, s.width, s.height);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(s, 0, 0, s.width, s.height, b.x, b.y, b.w, b.h);
+  ctx.restore();
+}
+
+function blurBox(ctx, p, b, strength){
+  var px = Math.max(2, b.h * strength / 22);
+  var pad = Math.ceil(px * 2);
+  var x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+  var w = Math.min(p.work.width - x, b.w + pad * 2), h = Math.min(p.work.height - y, b.h + pad * 2);
+  var t = document.createElement('canvas');
+  t.width = Math.max(1, Math.round(w)); t.height = Math.max(1, Math.round(h));
+  t.getContext('2d').drawImage(p.work, x, y, w, h, 0, 0, t.width, t.height);
+  ctx.save();
+  ctx.filter = 'blur(' + px.toFixed(1) + 'px)';
+  ctx.drawImage(t, 0, 0, t.width, t.height, x, y, w, h);
+  ctx.restore();
+  // 二次叠加，边缘更彻底
+  ctx.save();
+  ctx.filter = 'blur(' + (px * 0.6).toFixed(1) + 'px)';
+  ctx.drawImage(p.work, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
+  ctx.restore();
+}
+
+function smile(ctx, b){
+  var cx = b.x + b.w / 2, cy = b.y + b.h / 2, r = Math.max(6, b.w / 2);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffd85e'; ctx.fill();
+  ctx.lineWidth = Math.max(1, r * 0.08); ctx.strokeStyle = '#e0a800'; ctx.stroke();
+  // 眼睛
+  ctx.fillStyle = '#3a3226';
+  var er = Math.max(1, r * 0.11);
+  ctx.beginPath(); ctx.arc(cx - r * 0.35, cy - r * 0.2, er, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r * 0.35, cy - r * 0.2, er, 0, Math.PI * 2); ctx.fill();
+  // 嘴
+  ctx.beginPath();
+  ctx.arc(cx, cy + r * 0.05, r * 0.5, 0.25 * Math.PI, 0.75 * Math.PI);
+  ctx.lineWidth = Math.max(1, r * 0.09); ctx.strokeStyle = '#3a3226'; ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- 手动补框 ---------- */
+function toWork(e){
+  var r = view.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (view.width / r.width),
+    y: (e.clientY - r.top) * (view.height / r.height)
+  };
+}
+view.addEventListener('mousedown', function(e){
+  var p = cur(); if(!p) return;
+  var pt = toWork(e);
+  // 命中已有框的角标 → 删除
+  for(var i = p.boxes.length - 1; i >= 0; i--){
+    var b = p.boxes[i];
+    if(pt.x >= b.x + b.w - 16 && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + 16){
+      p.boxes.splice(i, 1); render(); renderThumbs(); return;
+    }
+  }
+  drag = { x0: pt.x, y0: pt.y, x1: pt.x, y1: pt.y };
+});
+view.addEventListener('mousemove', function(e){
+  if(!drag) return;
+  var pt = toWork(e); drag.x1 = pt.x; drag.y1 = pt.y; render();
+});
+window.addEventListener('mouseup', function(){
+  if(!drag) return;
+  var p = cur();
+  var x = Math.min(drag.x0, drag.x1), y = Math.min(drag.y0, drag.y1);
+  var w = Math.abs(drag.x1 - drag.x0), h = Math.abs(drag.y1 - drag.y0);
+  drag = null;
+  if(p && w > 8 && h > 8){
+    p.boxes.push({ x:x, y:y, w:w, h:h, child:true, age:null, manual:true });
+    renderThumbs();
+  }
+  render();
+});
+
+/* ---------- 自动识别 ---------- */
+function ensureModels(){
+  if(modelsReady) return Promise.resolve();
+  if(modelsLoading) return Promise.reject(new Error('模型加载中，请稍候'));
+  if(typeof faceapi === 'undefined') return Promise.reject(new Error('人脸检测库未加载（需联网加载 CDN），请检查网络后刷新页面'));
+  modelsLoading = true;
+  var base = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
+  return Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(base),
+    faceapi.nets.ageGenderNet.loadFromUri(base)
+  ]).then(function(){ modelsReady = true; modelsLoading = false; })
+    .catch(function(e){ modelsLoading = false; throw e; });
+}
+
+function detect(p){
+  return ensureModels().then(function(){
+    var opt = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 });
+    return faceapi.detectAllFaces(p.work, opt).withAgeAndGender();
+  }).then(function(res){
+    p.boxes = res.map(function(d){
+      var b = d.detection.box;
+      var age = Math.round(d.age);
+      return { x:b.x, y:b.y, w:b.width, h:b.height, age:age, child: age <= 12, auto:true };
+    });
+    p.done = true;
+    render(); renderThumbs();
+    return p.boxes.length;
+  });
+}
+
+$('btnAuto').onclick = function(){
+  var p = cur();
+  if(!p){ say('请先导入照片', true); return; }
+  say('识别中…（大图约需十几秒）');
+  detect(p).then(function(n){ say('识别完成，共 ' + n + ' 张人脸'); })
+    .catch(function(e){ say('识别失败：' + e.message + '，可用手动补框', true); });
+};
+
+$('btnAutoAll').onclick = function(){
+  var list = photos.filter(function(p){ return p.work; });
+  if(!list.length){ say('请先导入照片', true); return; }
+  var i = 0;
+  (function next(){
+    if(i >= list.length){ say('全部识别完成'); renderThumbs(); return; }
+    say('识别中 ' + (i + 1) + '/' + list.length + '…');
+    detect(list[i]).catch(function(){ return 0; }).then(function(){ i++; next(); });
+  })();
+};
+
+$('btnClear').onclick = function(){
+  var p = cur(); if(!p) return;
+  p.boxes = []; render(); renderThumbs();
+};
+$('mode').onchange = render;
+$('strength').oninput = render;
+$('childOnly').onchange = render;
+$('showBox').onchange = render;
+
+/* ---------- 保存 / 下载 ---------- */
+$('btnSave').onclick = function(){
+  var p = cur();
+  if(!p || !p.work){ say('请先导入照片', true); return; }
+  render();
+  var dataUrl = p.work.toDataURL('image/png');
+  say('保存中…');
+  fetch('/tongyan/api/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: p.name.replace(/\.[^.]+$/, '') + '-已打码.png', dataUrl: dataUrl })
+  }).then(function(r){ return r.json(); })
+    .then(function(j){
+      if(!j.ok) throw new Error(j.error || '保存失败');
+      say('已保存到服务器：' + j.file);
+      loadSaved();
+    })
+    .catch(function(e){
+      say('保存失败，已自动下载到本地', true);
+      download(p);
+    });
+};
+
+function download(p){
+  var a = document.createElement('a');
+  a.href = p.work.toDataURL('image/png');
+  a.download = p.name.replace(/\.[^.]+$/, '') + '-已打码.png';
+  a.click();
+}
+$('btnDownload').onclick = function(){
+  var p = cur(); if(!p || !p.work){ say('请先导入照片', true); return; }
+  render(); download(p); say('已下载');
+};
+
+/* ---------- 已保存记录 ---------- */
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+  return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]; }); }
+
+function loadSaved(){
+  fetch('/tongyan/api/saved').then(function(r){ return r.json(); })
+    .then(function(j){
+      var box = $('saved');
+      if(!j.ok || !j.files || !j.files.length){
+        box.innerHTML = '<div class="empty">还没有保存记录</div>'; return;
+      }
+      box.innerHTML = j.files.map(function(f){
+        return '<div class="sv">' +
+          '<button class="x" data-f="' + esc(f.file) + '" title="删除">×</button>' +
+          '<a href="/tongyan/saved/' + encodeURIComponent(f.file) + '" target="_blank">' +
+          '<img src="/tongyan/saved/' + encodeURIComponent(f.file) + '" alt=""></a>' +
+          '<div class="b">' + esc(f.file) + '<br><span class="hint">' +
+          (f.size ? (f.size / 1024 / 1024).toFixed(2) + ' MB' : '') + '</span></div></div>';
+      }).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('.x'), function(btn){
+        btn.onclick = function(){
+          if(!confirm('删除这张已保存图片？')) return;
+          fetch('/tongyan/api/saved/' + encodeURIComponent(btn.getAttribute('data-f')), { method: 'DELETE' })
+            .then(function(){ loadSaved(); });
+        };
+      });
+    })
+    .catch(function(){ $('saved').innerHTML = '<div class="empty">暂时读不到服务端记录</div>'; });
+}
+loadSaved();
+</script>
+</body>
+</html>

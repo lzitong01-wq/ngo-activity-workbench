@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史信息库（人工处理后台）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 3px; white-space: nowrap; }
+        .tag-history { background-color: #ede9fe; color: #5b21b6; }
+        .tag-muted { background-color: #f3f4f6; color: #6b7280; }
+        .tag-activity { background-color: #ccfbf1; color: #0f766e; }
+        .editable { border-bottom: 1px dashed #cbd5e1; }
+        .editable:hover { border-bottom-color: #7c3aed; }
+        .editable:focus { outline: 2px solid #7c3aed; background-color: #f5f3ff; }
+        .log-item { border-bottom: 1px solid #f3f4f6; padding: 6px 0; font-size: 12px; }
+        .log-item:last-child { border-bottom: none; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-4 py-6">
+        <!-- 标题 -->
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">历史信息库（人工处理后台）</h1>
+                <p class="text-sm text-gray-500 mt-1">沉淀已确认的「真名/小名/家长/手机号」对应关系；新报名自动比对、命中自动补全缺失字段后提示复核；合并/修正/建档全部留痕</p>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="operator" value="社工小张" class="border border-gray-300 rounded px-3 py-2 text-sm w-32" title="操作人（留痕用）">
+                <a href="/static/activities.html" data-perm="manage_activities" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700 transition">活动管理</a>
+                <a href="/static/attendance.html" data-perm="attendance_callback" class="px-4 py-2 text-sm text-white bg-amber-500 rounded hover:bg-amber-600 transition">现场签到</a>
+                <a href="/static/index.html" data-perm="manage_enrollments" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">← 统一报名列表</a>
+                <a href="/static/group_import.html" data-perm="manage_enrollments" class="px-4 py-2 text-sm text-white bg-slate-600 rounded hover:bg-slate-700 transition">群接龙导入</a>
+                <a href="/static/users.html" data-perm="manage_users" class="px-4 py-2 text-sm text-white bg-purple-600 rounded hover:bg-purple-700 transition">账号权限</a>
+                <a href="/static/volunteer.html" data-perm="volunteer_portal" class="px-4 py-2 text-sm text-white bg-green-600 rounded hover:bg-green-700 transition">我的服务</a>
+                <a href="/static/parent.html" data-perm="parent_portal" class="px-4 py-2 text-sm text-white bg-orange-500 rounded hover:bg-orange-600 transition">我的报名</a>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">儿童档案总数</div>
+                <div class="text-2xl font-bold text-violet-600" id="stat-profiles">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">累计关联报名</div>
+                <div class="text-2xl font-bold text-gray-800" id="stat-enrollments">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">待核对历史命中</div>
+                <div class="text-2xl font-bold text-amber-600" id="stat-pending">-</div>
+            </div>
+        </div>
+
+        <!-- 待核对命中队列 -->
+        <div class="bg-white rounded-lg shadow mb-6 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 bg-violet-50">
+                <h3 class="font-bold text-gray-800">☰ 待核对历史命中 <span id="pending-badge" class="ml-1 text-sm font-normal text-gray-500"></span></h3>
+                <p class="text-xs text-gray-500 mt-0.5">新报名自动与历史库比对，命中只提示：请电话/当面核对后拍板，确认同一儿童才写入档案</p>
+            </div>
+            <div id="pending-body" class="p-4 space-y-3"></div>
+        </div>
+
+        <!-- 档案列表 -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3 bg-gray-50">
+                <h3 class="font-bold text-gray-800">儿童档案列表</h3>
+                <div class="flex flex-wrap items-center gap-3">
+                    <input type="text" id="profile-keyword" placeholder="搜真名/小名/家长/手机号" class="border border-gray-300 rounded px-3 py-2 text-sm w-56">
+                    <label class="text-xs text-gray-500 flex items-center gap-1"><input type="checkbox" id="include-merged"> 含已并入档案</label>
+                    <button onclick="openCreateModal()" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700 transition">+ 新建档案</button>
+                    <button onclick="openMergeModal()" id="merge-btn" disabled class="px-4 py-2 text-sm text-white bg-amber-600 rounded hover:bg-amber-700 transition disabled:opacity-40 disabled:cursor-not-allowed">合并选中档案</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-3 py-2 w-8"></th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">档案#</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">学生真名</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">学生小名</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">家长姓名</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">手机号</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">关系</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">累计报名</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">最近报名</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">状态</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profile-body" class="divide-y divide-gray-200 bg-white"></tbody>
+                </table>
+            </div>
+            <div class="px-4 py-2 bg-gray-50 border-t text-xs text-gray-500">
+                勾选 2 条及以上档案可合并（确认是同一儿童的不同档案）；档案字段可在详情弹窗直接修改，全部留痕。
+            </div>
+        </div>
+    </div>
+
+    <!-- 档案详情弹窗 -->
+    <div id="detail-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeDetailModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto relative">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h3 class="text-lg font-bold text-gray-800">档案详情 · 可直接改字段（留痕）</h3>
+                    <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
+                <div class="px-6 py-4" id="profile-detail-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建档案弹窗 -->
+    <div id="create-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeCreateModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="font-bold text-gray-800 mb-1">新建儿童档案</h3>
+                <p class="text-xs text-gray-500 mb-4">用于电话报名等未走系统的情况，手工沉淀历史信息。</p>
+                <div class="space-y-3">
+                    <input type="text" id="create-real" placeholder="学生真名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="create-nick" placeholder="学生小名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="create-parent" placeholder="家长姓名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="create-phone" placeholder="手机号" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="create-relation" placeholder="与孩子关系（妈妈/爸爸/奶奶…）" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="create-note" placeholder="备注（如：周四固定班）" class="w-full border rounded px-3 py-2 text-sm">
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button onclick="closeCreateModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">取消</button>
+                    <button onclick="submitCreateProfile()" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700">建档</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 合并档案弹窗 -->
+    <div id="merge-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeMergeModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto">
+                <h3 class="font-bold text-gray-800 mb-1">合并历史档案（确认是同一儿童）</h3>
+                <p class="text-xs text-gray-500 mb-4">勾选主档案（保留），其余并入：空字段补全、报名次数累加、关联报名并集，全部留痕。</p>
+                <div id="merge-body" class="space-y-2 mb-4"></div>
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeMergeModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">取消</button>
+                    <button onclick="submitMerge()" class="px-4 py-2 text-sm text-white bg-amber-600 rounded hover:bg-amber-700">确认合并</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[60] hidden">
+        <div class="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg" id="toast-text"></div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        let profilesCache = [];
+        let currentDetailId = null;
+        let mergeSelection = [];
+        let toastTimer = null;
+
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        function operatorName() {
+            return document.getElementById('operator').value.trim() || '社工';
+        }
+
+        async function jfetch(url, options) {
+            const res = await fetch(url, options);
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json.error || `请求失败(${res.status})`);
+            return json;
+        }
+
+        // ---------- 加载 ----------
+        async function loadAll() {
+            await Promise.all([loadStats(), loadPending(), loadProfiles()]);
+        }
+
+        async function loadStats() {
+            try {
+                const [pj, pend] = await Promise.all([
+                    jfetch(`${API_BASE}/api/profiles`),
+                    jfetch(`${API_BASE}/api/history/pending`)
+                ]);
+                document.getElementById('stat-profiles').textContent = pj.total;
+                document.getElementById('stat-enrollments').textContent = pj.data.reduce((s, p) => s + (p.enrollment_count || 0), 0);
+                document.getElementById('stat-pending').textContent = pend.total;
+            } catch (err) { console.error(err); }
+        }
+
+        async function loadPending() {
+            const body = document.getElementById('pending-body');
+            const badge = document.getElementById('pending-badge');
+            try {
+                const json = await jfetch(`${API_BASE}/api/history/pending`);
+                badge.textContent = json.total ? `${json.total} 条，需要人工核对` : '当前没有待核对';
+                if (!json.total) {
+                    body.innerHTML = '<div class="text-sm text-gray-400 text-center py-4">✅ 没有待核对的历史命中。新报名命中档案时会出现在这里。</div>';
+                    return;
+                }
+                body.innerHTML = json.data.map(row => {
+                    const e = row.enrollment;
+                    const name = e.student_real_name || e.student_nickname || '（未填姓名）';
+                    const matchHtml = row.matches.map(m => {
+                        const p = m.profile;
+                        return `
+                            <div class="flex flex-wrap items-center justify-between gap-2 bg-white border border-violet-100 rounded px-3 py-2">
+                                <div class="text-sm">
+                                    <span class="font-semibold text-gray-800">档案 #${p.id} ${escapeHtml(p.student_real_name) || '（真名空）'}（${escapeHtml(p.student_nickname) || '无小名'}）</span>
+                                    <span class="text-gray-500 text-xs ml-1">家长 ${escapeHtml(p.parent_name) || '空'} · ${escapeHtml(p.phone) || '无手机号'} · 历史报名 ${p.enrollment_count} 次</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    ${m.reasons.map(r => `<span class="tag tag-history">${escapeHtml(r)}</span>`).join('')}
+                                    <button onclick="confirmPending(${e.id}, ${p.id}, true)" class="px-3 py-1 text-xs text-white bg-violet-600 rounded hover:bg-violet-700 whitespace-nowrap">确认同一儿童</button>
+                                </div>
+                            </div>`;
+                    }).join('');
+                    return `
+                        <div class="border border-violet-200 bg-violet-50/50 rounded-lg p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <div class="text-sm">
+                                    <span class="font-bold text-gray-800">报名 #${e.id} · ${escapeHtml(name)}</span>
+                                    ${e.activity_name ? `<span class="tag tag-activity ml-1" title="归属活动">🎯 ${escapeHtml(e.activity_name)}</span>` : '<span class="tag tag-muted ml-1">未归属活动</span>'}
+                                    <span class="text-gray-500 text-xs ml-1">真名:${escapeHtml(e.student_real_name) || '空'} / 小名:${escapeHtml(e.student_nickname) || '空'} / 家长:${escapeHtml(e.parent_name) || '空'} / 手机:${escapeHtml(e.phone) || '空'}</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="confirmPending(${e.id}, 0, true)" class="px-3 py-1 text-xs text-violet-700 bg-white border border-violet-300 rounded hover:bg-violet-100">以上都不是，沉淀为新档案</button>
+                                    <button onclick="confirmPending(${e.id}, 0, false)" class="px-3 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100">不是同一儿童，忽略</button>
+                                </div>
+                            </div>
+                            <div class="space-y-2">${matchHtml}</div>
+                        </div>`;
+                }).join('');
+            } catch (err) {
+                body.innerHTML = `<div class="text-sm text-red-500">加载失败：${err.message}</div>`;
+            }
+        }
+
+        async function loadProfiles() {
+            const tbody = document.getElementById('profile-body');
+            try {
+                const kw = document.getElementById('profile-keyword').value.trim();
+                const inc = document.getElementById('include-merged').checked ? '1' : '';
+                const json = await jfetch(`${API_BASE}/api/profiles?keyword=${encodeURIComponent(kw)}&include_merged=${inc}`);
+                profilesCache = json.data;
+                if (!json.data.length) {
+                    tbody.innerHTML = '<tr><td colspan="11" class="px-4 py-8 text-center text-gray-400">暂无档案，可通过「确认历史命中」或「新建档案」沉淀</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = json.data.map(p => {
+                    const mergedHtml = p.merged_into
+                        ? `<span class="tag tag-muted" title="已并入档案 #${p.merged_into}，留痕保留">已并入 #${p.merged_into}</span>`
+                        : '<span class="tag tag-history">在用</span>';
+                    return `
+                        <tr class="${p.merged_into ? 'opacity-50' : ''} hover:bg-gray-50" id="profile-row-${p.id}">
+                            <td class="px-3 py-2">${p.merged_into ? '' : `<input type="checkbox" class="profile-check accent-amber-600" value="${p.id}" onchange="updateMergeBtn()">`}</td>
+                            <td class="px-3 py-2 text-sm text-gray-500">#${p.id}</td>
+                            <td class="px-3 py-2 text-sm text-gray-900">${escapeHtml(p.student_real_name) || '<span class="text-gray-400">（空）</span>'}</td>
+                            <td class="px-3 py-2 text-sm text-gray-700">${escapeHtml(p.student_nickname) || '-'}</td>
+                            <td class="px-3 py-2 text-sm text-gray-700">${escapeHtml(p.parent_name) || '-'}</td>
+                            <td class="px-3 py-2 text-sm text-gray-700">${escapeHtml(p.phone) || '-'}</td>
+                            <td class="px-3 py-2 text-sm text-gray-700">${escapeHtml(p.relation) || '-'}</td>
+                            <td class="px-3 py-2 text-sm font-semibold text-violet-700">${p.enrollment_count || 0} 次</td>
+                            <td class="px-3 py-2 text-xs text-gray-500">${escapeHtml(p.latest_source_time || '-')}</td>
+                            <td class="px-3 py-2">${mergedHtml}</td>
+                            <td class="px-3 py-2 text-sm whitespace-nowrap">
+                                <button onclick="openDetail(${p.id})" class="text-blue-600 hover:underline text-xs">详情/编辑</button>
+                                ${p.merged_into ? '' : `<button onclick="openDetail(${p.id})" class="text-gray-400 hover:underline text-xs ml-2" title="查看关联报名与留痕">日志</button>`}
+                            </td>
+                        </tr>`;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="11" class="px-4 py-8 text-center text-red-500">加载失败：${err.message}</td></tr>`;
+            }
+        }
+
+        // ---------- 待核对队列处理 ----------
+        async function confirmPending(enrollmentId, profileId, isSame) {
+            let tip;
+            if (!isSame) tip = '确认该报名与命中的历史档案不是同一儿童？忽略后不再提示（留痕可查）。';
+            else if (profileId > 0) tip = `确认该报名与历史档案 #${profileId} 是同一儿童？\n确认后档案更新（报名次数+1、空字段补全、过期信息以本次报名为准）。`;
+            else tip = '把该报名沉淀为新档案写入历史信息库？';
+            if (!confirm(tip)) return;
+            try {
+                const json = await jfetch(`${API_BASE}/api/enrollments/${enrollmentId}/history_confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_same: isSame, profile_id: profileId, operator: operatorName() })
+                });
+                toast(json.message || '已记录');
+                loadAll();
+            } catch (err) { toast('操作失败：' + err.message); }
+        }
+
+        // ---------- 档案详情 / 编辑 ----------
+        async function openDetail(id) {
+            currentDetailId = id;
+            await renderDetail(id);
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        async function renderDetail(id) {
+            try {
+                const json = await jfetch(`${API_BASE}/api/profiles/${id}`);
+                const p = json.data;
+                const editableRow = (field, label, value) => `
+                    <div class="grid grid-cols-3 gap-4 border-b pb-2 items-center">
+                        <div class="text-gray-500">${label}</div>
+                        <div class="col-span-2">
+                            <input type="text" value="${escapeHtml(value || '')}" data-field="${field}"
+                                   class="editable w-full bg-transparent text-sm px-1 py-0.5"
+                                   onchange="saveProfileField(${id}, '${field}', this.value)"
+                                   placeholder="点击编辑，回车或点击别处保存（留痕）">
+                        </div>
+                    </div>`;
+
+                const relatedHtml = (p.related_enrollments || []).map(e => `
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 py-1.5 text-sm">
+                        <div>
+                            <span class="text-gray-700">#${e.id} ${escapeHtml(e.student_real_name) || escapeHtml(e.student_nickname) || '（未填姓名）'}</span>
+                            <span class="text-xs text-gray-400 ml-1">${escapeHtml(e.source_time || '')} · ${escapeHtml(e.source_user || '')}</span>
+                        </div>
+                        <span class="inline-block px-2 py-0.5 rounded text-xs ${e.status === '已合并' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}">${e.status}</span>
+                    </div>`).join('') || '<div class="text-gray-400 text-xs">暂无关联报名</div>';
+
+                const logText = l => {
+                    const fieldNames = { student_real_name: '真名', student_nickname: '小名', parent_name: '家长', phone: '手机号', relation: '关系', note: '备注' };
+                    const f = fieldNames[l.field_name] || l.field_name;
+                    switch (l.operation_type) {
+                        case 'create': return `建档：${l.new_value || ''}`;
+                        case 'profile_edit': return `修改「${f}」：${l.old_value || '空'} → ${l.new_value || '空'}${l.tag ? `（${l.tag}）` : ''}`;
+                        case 'profile_fill': return `补全「${f}」：空 → ${l.new_value}${l.tag ? `（${l.tag}）` : ''}`;
+                        case 'hit_confirm': return `命中核对：${l.new_value || ''}`;
+                        case 'merge': return `合并操作：把 ${l.old_value} 并入本档案`;
+                        case 'merged_into': return `本档案已并入 ${l.new_value}，留痕保留`;
+                        default: return escapeHtml(l.operation_type || JSON.stringify(l));
+                    }
+                };
+                const logsHtml = (p.logs || []).map(l =>
+                    `<div class="log-item text-gray-600">[${l.operated_at}] ${escapeHtml(l.operator || '系统')}：${logText(l)}</div>`
+                ).join('') || '<div class="text-gray-400 text-xs">暂无操作记录</div>';
+
+                document.getElementById('profile-detail-content').innerHTML = `
+                    <div class="space-y-3 text-sm">
+                        ${p.merged_into ? `
+                        <div class="bg-gray-50 border border-gray-200 rounded p-2 text-gray-600 text-xs">
+                            该档案已并入 #${p.merged_into}，仅为留痕保留，不可编辑。
+                        </div>` : ''}
+                        ${editableRow('student_real_name', '学生真名 ✎', p.student_real_name)}
+                        ${editableRow('student_nickname', '学生小名 ✎', p.student_nickname)}
+                        ${editableRow('parent_name', '家长姓名 ✎', p.parent_name)}
+                        ${editableRow('phone', '手机号 ✎', p.phone)}
+                        ${editableRow('relation', '与孩子关系 ✎', p.relation)}
+                        ${editableRow('note', '备注 ✎', p.note)}
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">累计报名</div>
+                            <div class="col-span-2 font-semibold text-violet-700">${p.enrollment_count || 0} 次</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 border-b pb-2">
+                            <div class="text-gray-500">建档信息</div>
+                            <div class="col-span-2 text-xs text-gray-500">${escapeHtml(p.confirmed_by || '系统')} · ${escapeHtml(p.confirmed_at || p.created_at || '')}</div>
+                        </div>
+
+                        <div class="border rounded-lg p-3 bg-violet-50/40">
+                            <div class="text-sm font-medium text-gray-700 mb-2">关联报名（${(p.related_enrollments || []).length} 条）</div>
+                            ${relatedHtml}
+                        </div>
+                        <div class="border rounded-lg p-3 bg-gray-50">
+                            <div class="text-sm font-medium text-gray-700 mb-2">档案操作留痕（${(p.logs || []).length} 条）</div>
+                            ${logsHtml}
+                        </div>
+                    </div>`;
+            } catch (err) { toast('加载档案失败：' + err.message); }
+        }
+
+        async function saveProfileField(id, field, value) {
+            try {
+                const json = await jfetch(`${API_BASE}/api/profiles/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value, operator: operatorName() })
+                });
+                toast('已保存并留痕');
+                await renderDetail(id);
+                loadProfiles();
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+        }
+
+        // ---------- 新建档案 ----------
+        function openCreateModal() {
+            document.getElementById('create-modal').classList.remove('hidden');
+        }
+        function closeCreateModal() {
+            document.getElementById('create-modal').classList.add('hidden');
+        }
+        async function submitCreateProfile() {
+            try {
+                const json = await jfetch(`${API_BASE}/api/profiles`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        student_real_name: document.getElementById('create-real').value,
+                        student_nickname: document.getElementById('create-nick').value,
+                        parent_name: document.getElementById('create-parent').value,
+                        phone: document.getElementById('create-phone').value,
+                        relation: document.getElementById('create-relation').value,
+                        note: document.getElementById('create-note').value,
+                        operator: operatorName()
+                    })
+                });
+                toast(`已建档 #${json.data.id}，下次报名自动比对复用`);
+                closeCreateModal();
+                ['create-real', 'create-nick', 'create-parent', 'create-phone', 'create-relation', 'create-note'].forEach(i => document.getElementById(i).value = '');
+                loadAll();
+            } catch (err) { toast('建档失败：' + err.message); }
+        }
+
+        // ---------- 合并档案 ----------
+        function updateMergeBtn() {
+            const checked = document.querySelectorAll('.profile-check:checked');
+            const btn = document.getElementById('merge-btn');
+            mergeSelection = Array.from(checked).map(c => parseInt(c.value, 10));
+            btn.disabled = checked.length < 2;
+            btn.textContent = checked.length >= 2 ? `合并选中档案（${checked.length}）` : '合并选中档案';
+        }
+
+        function openMergeModal() {
+            if (mergeSelection.length < 2) return;
+            const selected = profilesCache.filter(p => mergeSelection.includes(p.id));
+            document.getElementById('merge-body').innerHTML = selected.map((p, i) => `
+                <label class="flex items-start gap-3 border rounded p-3 cursor-pointer hover:bg-amber-50 ${i === 0 ? 'border-amber-300' : ''}">
+                    <input type="radio" name="merge-primary" value="${p.id}" ${i === 0 ? 'checked' : ''} class="mt-1 accent-amber-600">
+                    <div class="text-sm">
+                        <div class="font-semibold text-gray-800">档案 #${p.id}：${escapeHtml(p.student_real_name) || '（真名空）'}（${escapeHtml(p.student_nickname) || '无小名'}）</div>
+                        <div class="text-xs text-gray-500">家长 ${escapeHtml(p.parent_name) || '空'} · ${escapeHtml(p.phone) || '无手机号'} · 报名 ${p.enrollment_count} 次</div>
+                    </div>
+                </label>`).join('');
+            document.getElementById('merge-modal').classList.remove('hidden');
+        }
+
+        function closeMergeModal() {
+            document.getElementById('merge-modal').classList.add('hidden');
+        }
+
+        async function submitMerge() {
+            const primaryId = parseInt(document.querySelector('input[name="merge-primary"]:checked').value, 10);
+            const mergeIds = mergeSelection.filter(i => i !== primaryId);
+            if (!mergeIds.length) return toast('请选择被并入的档案（至少勾选 2 条）');
+            if (!confirm(`确认把 ${mergeIds.map(i => '#' + i).join('、')} 并入档案 #${primaryId}？\n空字段补全、报名次数累加、关联报名并集，全部留痕，可追溯。`)) return;
+            try {
+                const json = await jfetch(`${API_BASE}/api/profiles/merge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ primary_id: primaryId, merge_ids: mergeIds, operator: operatorName() })
+                });
+                toast(json.message || '已合并');
+                closeMergeModal();
+                loadAll();
+            } catch (err) { toast('合并失败：' + err.message); }
+        }
+
+        document.getElementById('profile-keyword').addEventListener('input', () => loadProfiles());
+        document.getElementById('include-merged').addEventListener('change', () => loadProfiles());
+
+        // 任务5：启动门禁——历史信息库属受控功能，校验登录态与权限
+        bootGate({ minPerm: "history_profiles", minPermLabel: "历史信息库" }).then(user => {
+            if (!user) return;
+            loadAll();
+        });
+    </script>
+</body>
+</html>

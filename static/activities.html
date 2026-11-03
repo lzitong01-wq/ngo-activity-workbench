@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活动管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .modal-backdrop { background-color: rgba(0,0,0,0.5); }
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; white-space: nowrap; }
+        .tag-system { background-color: #fee2e2; color: #991b1b; }
+        .tag-status-active { background-color: #ccfbf1; color: #0f766e; }
+        .tag-status-closed { background-color: #f3f4f6; color: #6b7280; }
+        .cap-full { color: #dc2626; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-4 py-6">
+        <!-- 标题 -->
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">活动管理</h1>
+                <p class="text-sm text-gray-500 mt-1">每条报名必须归属一个活动；异常处理、留痕、状态都挂在活动下，签到表与台账将按活动导出</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/static/index.html" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">← 统一报名列表</a>
+                <a href="/static/attendance.html" data-perm="attendance_callback" class="px-4 py-2 text-sm text-white bg-amber-500 rounded hover:bg-amber-600 transition">现场签到 →</a>
+                <a href="/static/profiles.html" data-perm="history_profiles" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700 transition">历史信息库 →</a>
+                <a href="/static/group_import.html" data-perm="manage_enrollments" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">群接龙导入 →</a>
+                <a href="/static/users.html" data-perm="manage_users" class="px-4 py-2 text-sm text-white bg-purple-600 rounded hover:bg-purple-700 transition">账号权限 →</a>
+                <a href="/static/volunteer.html" data-perm="volunteer_portal" class="px-4 py-2 text-sm text-white bg-green-600 rounded hover:bg-green-700 transition">我的服务 →</a>
+                <a href="/static/parent.html" data-perm="parent_portal" class="px-4 py-2 text-sm text-white bg-orange-500 rounded hover:bg-orange-600 transition">我的报名 →</a>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">活动总数</div>
+                <div class="text-2xl font-bold text-gray-800" id="stat-total">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">进行中</div>
+                <div class="text-2xl font-bold text-teal-600" id="stat-active">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">已结束</div>
+                <div class="text-2xl font-bold text-gray-500" id="stat-closed">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-sm text-gray-500">报名总数（全部活动）</div>
+                <div class="text-2xl font-bold text-blue-600" id="stat-enrollments">-</div>
+            </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap items-end gap-4">
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">活动状态</label>
+                <select id="filter-status" class="border border-gray-300 rounded px-3 py-2 text-sm min-w-[130px]" onchange="loadActivities()">
+                    <option value="">全部</option>
+                    <option value="进行中">进行中</option>
+                    <option value="已结束">已结束</option>
+                </select>
+            </div>
+            <div class="ml-auto">
+                <button onclick="openEditModal()" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700 transition">＋ 新建活动</button>
+            </div>
+        </div>
+
+        <!-- 活动列表 -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">活动名称</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">活动时间</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">活动地点</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">报名进度</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">报名截止</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">状态</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider w-64">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-list" class="divide-y divide-gray-200 bg-white">
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 该活动下的报名归档（点击「查看报名」展开） -->
+        <div id="activity-enrollments" class="bg-white rounded-lg shadow mt-6 overflow-hidden hidden">
+            <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-teal-50">
+                <h3 class="font-bold text-gray-800" id="ae-title">活动报名归档</h3>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-amber-700" id="ae-sub"></span>
+                    <button onclick="document.getElementById('activity-enrollments').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-sm">收起 ✕</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">序号</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">学生真名</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">小名</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">家长</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">手机号</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">来源</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">来源时间</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">状态</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-600">签到</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ae-body" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建/编辑活动 Modal -->
+    <div id="activity-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 modal-backdrop" onclick="closeModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full relative">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-gray-800" id="am-title">＋ 新建活动</h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
+                <div class="px-6 py-4 space-y-3 text-sm">
+                    <div>
+                        <label class="block text-gray-500 mb-1">活动名称 <span class="text-red-500">*</span></label>
+                        <input type="text" id="am-name" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="如：2026 秋季融合体验营">
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">活动时间</label>
+                        <input type="text" id="am-time" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="如：2026-10-20 09:30 ~ 11:30">
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">活动地点</label>
+                        <input type="text" id="am-location" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-500 mb-1">招募人数（0 = 不限）</label>
+                            <input type="number" id="am-capacity" min="0" class="border border-gray-300 rounded px-3 py-2 w-full" value="0">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-1">报名截止时间</label>
+                            <input type="text" id="am-deadline" class="border border-gray-300 rounded px-3 py-2 w-full" placeholder="如：2026-10-18 18:00">
+                        </div>
+                    </div>
+                    <div id="am-status-wrap">
+                        <label class="block text-gray-500 mb-1">活动状态</label>
+                        <select id="am-status" class="border border-gray-300 rounded px-3 py-2 w-full">
+                            <option value="进行中">进行中</option>
+                            <option value="已结束">已结束</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">备注</label>
+                        <input type="text" id="am-note" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 mb-1">志愿者服务提示维度 <span class="text-xs text-gray-400">（勾选后志愿者端才显示该维度；提示内容在报名详情里维护）</span></label>
+                        <div class="flex flex-wrap gap-2" id="am-tipfields">
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="陪护重点">陪护重点</label>
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="沟通方式">沟通方式</label>
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="安全注意事项">安全注意事项</label>
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="饮食注意">饮食注意</label>
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="携带物品">携带物品</label>
+                            <label class="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs cursor-pointer"><input type="checkbox" value="其他提示">其他提示</label>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button onclick="closeModal()" class="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200">取消</button>
+                        <button onclick="submitActivity()" class="px-4 py-2 text-white bg-teal-600 rounded hover:bg-teal-700">保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 z-[60] hidden">
+        <div class="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg" id="toast-text"></div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        let editingId = null;   // null=新建，数字=编辑
+        const sourceLabels = {
+            'miniapp': '小程序', 'group_signup': '群接龙',
+            'teacher_proxy': '老师代报', 'phone_private': '电话/私聊'
+        };
+        const statusColors = {
+            '待处理': 'bg-yellow-100 text-yellow-800', '已确认': 'bg-green-100 text-green-800',
+            '已合并': 'bg-blue-100 text-blue-800', '已修正': 'bg-purple-100 text-purple-800'
+        };
+
+        async function init() { await loadActivities(); }
+
+        async function loadActivities() {
+            const status = document.getElementById('filter-status').value;
+            try {
+                const [actRes, statsRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/activities${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+                    fetch(`${API_BASE}/api/stats`)
+                ]);
+                const json = await actRes.json();
+                const stats = await statsRes.json();
+                document.getElementById('stat-total').textContent = json.total;
+                document.getElementById('stat-active').textContent = stats.active_activities ?? '-';
+                document.getElementById('stat-closed').textContent = (json.data || []).filter(a => a.status === '已结束').length;
+                document.getElementById('stat-enrollments').textContent = stats.total;
+                renderList(json.data || []);
+            } catch (err) { toast('加载活动失败：' + err.message); }
+        }
+
+        function renderList(data) {
+            const tbody = document.getElementById('activity-list');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">还没有活动，点右上角「＋ 新建活动」创建第一个活动</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(a => {
+                const capText = a.capacity > 0
+                    ? `<span class="${a.enrollment_count >= a.capacity ? 'cap-full' : ''}">${a.enrollment_count} / ${a.capacity}</span>`
+                    : `${a.enrollment_count} <span class="text-gray-400">/ 不限</span>`;
+                const statusTag = a.status === '进行中'
+                    ? '<span class="tag tag-status-active">● 进行中</span>'
+                    : '<span class="tag tag-status-closed">已结束</span>';
+                const capWarning = a.capacity > 0 && a.enrollment_count >= a.capacity
+                    ? '<span class="tag tag-system ml-1">已满</span>' : '';
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">
+                            ${escapeHtml(a.name)}
+                            ${a.note ? `<div class="text-xs text-gray-400 mt-0.5">${escapeHtml(a.note)}</div>` : ''}
+                            ${(() => { let tips = a.tip_fields || []; if (typeof tips === 'string') { try { tips = JSON.parse(tips); } catch (e) { tips = []; } }
+                                return tips.length ? `<div class="mt-1 flex flex-wrap gap-1">${tips.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 border border-sky-100">提示·${escapeHtml(t)}</span>`).join('')}</div>` : ''; })()}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(a.activity_time) || '—'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(a.location) || '—'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-800">${capText}${capWarning}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(a.deadline) || '—'}</td>
+                        <td class="px-4 py-3">${statusTag}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="viewEnrollments(${a.id}, '${escapeHtml(a.name)}')" class="px-3 py-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded hover:bg-teal-100">查看报名</button>
+                                <a href="/static/attendance.html?activity_id=${a.id}" class="px-3 py-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100">现场签到</a>
+                                <button onclick="exportSheet(${a.id})" class="px-3 py-1.5 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100" title="导出可打印纸质签到表">签到表</button>
+                                <button onclick="exportLedger(${a.id})" class="px-3 py-1.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded hover:bg-violet-100" title="导出台账：报名+异常处理+签到结果">台账</button>
+                                <button onclick="openEditModal(${a.id})" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200">编辑</button>
+                                ${a.status === '进行中'
+                                    ? `<button onclick="closeActivity(${a.id}, '${escapeHtml(a.name)}')" class="px-3 py-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100">关闭活动</button>`
+                                    : `<button onclick="reopenActivity(${a.id})" class="px-3 py-1.5 text-xs text-teal-700 bg-white border border-teal-300 rounded hover:bg-teal-50">重新开启</button>`}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 查看活动下报名（按活动归档视图）
+        async function viewEnrollments(id, name) {
+            try {
+                const res = await fetch(`${API_BASE}/api/activities/${id}`);
+                const json = await res.json();
+                const d = json.data;
+                const bySource = Object.entries(d.by_source || {}).map(([k, v]) => `${k} ${v}`).join(' · ') || '暂无报名';
+                const att = d.attendance_counts || {};
+                document.getElementById('ae-title').textContent = `📁 ${name} · 报名归档（${d.enrollment_count} 条：${bySource}）`;
+                document.getElementById('ae-sub').textContent =
+                    `签到：到场 ${att['到场'] || 0} · 未到场 ${att['未到场'] || 0} · 临时到场 ${att['临时到场'] || 0} · 未记录 ${att['未记录'] || 0}`;
+                const attChip = e => {
+                    if (!e.attendance_status) return '<span class="text-gray-300 text-xs">未记录</span>';
+                    const cls = e.attendance_status === '到场' ? 'bg-green-100 text-green-700'
+                        : e.attendance_status === '未到场' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+                    return `<span class="inline-block px-1.5 py-0.5 rounded text-xs ${cls}" title="${escapeHtml(e.attendance_note || '')}">✓${e.attendance_status}</span>`;
+                };
+                const rows = (d.enrollments || []).map(e => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-2 text-sm text-gray-900">${e.id}</td>
+                        <td class="px-4 py-2 text-sm">${escapeHtml(e.student_real_name) || '<span class="text-gray-400">（空）</span>'}</td>
+                        <td class="px-4 py-2 text-sm text-gray-600">${escapeHtml(e.student_nickname) || '-'}</td>
+                        <td class="px-4 py-2 text-sm text-gray-600">${escapeHtml(e.parent_name) || '-'}</td>
+                        <td class="px-4 py-2 text-sm text-gray-600">${escapeHtml(e.phone) || '-'}</td>
+                        <td class="px-4 py-2 text-sm text-gray-600">${sourceLabels[e.source_type] || e.source_type}</td>
+                        <td class="px-4 py-2 text-sm text-gray-500">${e.source_time || '-'}</td>
+                        <td class="px-4 py-2"><span class="tag ${statusColors[e.status] || 'bg-gray-100 text-gray-800'}">${e.status}</span></td>
+                        <td class="px-4 py-2">${attChip(e)}</td>
+                    </tr>
+                `).join('');
+                document.getElementById('ae-body').innerHTML = rows || '<tr><td colspan="9" class="px-4 py-6 text-center text-gray-400">该活动还没有报名</td></tr>';
+                const box = document.getElementById('activity-enrollments');
+                box.classList.remove('hidden');
+                box.scrollIntoView({ behavior: 'smooth' });
+            } catch (err) { toast('加载活动报名失败：' + err.message); }
+        }
+
+        function openEditModal(id = null) {
+            editingId = id;
+            document.getElementById('am-title').textContent = id ? '✎ 编辑活动' : '＋ 新建活动';
+            document.getElementById('am-status-wrap').style.display = id ? '' : 'none';  // 新建默认进行中，状态由「关闭」控制
+            if (id) {
+                const res = fetch(`${API_BASE}/api/activities/${id}`).then(r => r.json()).then(json => {
+                    const a = json.data;
+                    document.getElementById('am-name').value = a.name || '';
+                    document.getElementById('am-time').value = a.activity_time || '';
+                    document.getElementById('am-location').value = a.location || '';
+                    document.getElementById('am-capacity').value = a.capacity || 0;
+                    document.getElementById('am-deadline').value = a.deadline || '';
+                    document.getElementById('am-status').value = a.status || '进行中';
+                    document.getElementById('am-note').value = a.note || '';
+                    let tips = a.tip_fields || [];
+                    if (typeof tips === 'string') { try { tips = JSON.parse(tips); } catch (e) { tips = []; } }
+                    document.querySelectorAll('#am-tipfields input[type=checkbox]').forEach(cb => cb.checked = tips.includes(cb.value));
+                });
+            } else {
+                ['am-name', 'am-time', 'am-location', 'am-deadline', 'am-note'].forEach(i => document.getElementById(i).value = '');
+                document.getElementById('am-capacity').value = 0;
+                document.getElementById('am-status').value = '进行中';
+                document.querySelectorAll('#am-tipfields input[type=checkbox]').forEach(cb => cb.checked = false);
+            }
+            document.getElementById('activity-modal').classList.remove('hidden');
+        }
+
+        async function submitActivity() {
+            const payload = {
+                name: document.getElementById('am-name').value.trim(),
+                activity_time: document.getElementById('am-time').value.trim(),
+                location: document.getElementById('am-location').value.trim(),
+                capacity: parseInt(document.getElementById('am-capacity').value || '0', 10),
+                deadline: document.getElementById('am-deadline').value.trim(),
+                note: document.getElementById('am-note').value.trim(),
+                tip_fields: [...document.querySelectorAll('#am-tipfields input[type=checkbox]:checked')].map(cb => cb.value),
+            };
+            if (!payload.name) { toast('活动名称不能为空'); return; }
+            try {
+                let res;
+                if (editingId) {
+                    payload.status = document.getElementById('am-status').value;
+                    res = await fetch(`${API_BASE}/api/activities/${editingId}`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    res = await fetch(`${API_BASE}/api/activities`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '保存失败');
+                toast(json.message || '已保存');
+                closeModal();
+                await loadActivities();
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        async function closeActivity(id, name) {
+            if (!confirm(`确认关闭活动「${name}」？\n关闭后不能再接入新报名，已有报名与留痕全部保留（可按活动归档导出）。`)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/activities/${id}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: '已结束' })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                toast(json.message || '活动已关闭');
+                await loadActivities();
+            } catch (err) { toast('操作失败：' + err.message); }
+        }
+
+        async function reopenActivity(id) {
+            try {
+                const res = await fetch(`${API_BASE}/api/activities/${id}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: '进行中' })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                toast('活动已重新开启，可以继续接入报名');
+                await loadActivities();
+            } catch (err) { toast('操作失败：' + err.message); }
+        }
+
+        // 任务4：签到表 / 台账导出
+        function exportSheet(id) {
+            window.open(`${API_BASE}/api/activities/${id}/signup_sheet?format=html`, '_blank');
+        }
+
+        function exportLedger(id) {
+            window.open(`${API_BASE}/api/export/ledger?activity_id=${id}&format=xlsx`, '_blank');
+        }
+
+        function closeModal() { document.getElementById('activity-modal').classList.add('hidden'); editingId = null; }
+
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 任务5：启动门禁——校验登录态与「活动管理」权限后再初始化
+        bootGate({ minPerm: "manage_activities", minPermLabel: "活动管理" }).then(user => {
+            if (!user) return;
+            init();
+        });
+    </script>
+</body>
+</html>

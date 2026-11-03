@@ -1,0 +1,20 @@
+# 运行期数据（不入库）
+data/*.db
+tongyan/saved/*.png
+archive/data/*.csv.tmp
+*.log
+
+# 本地配置与虚拟环境
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

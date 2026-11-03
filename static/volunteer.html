@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的服务（志愿者）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .att-btn { padding: 4px 12px; border-radius: 8px; font-size: 12px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+        .att-btn.active-ok { background: #16a34a; color: #fff; border-color: #16a34a; }
+        .att-btn.active-no { background: #dc2626; color: #fff; border-color: #dc2626; }
+        .att-btn.active-temp { background: #d97706; color: #fff; border-color: #d97706; }
+        .tip-card { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; }
+        .locked { background: repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 8px, #e5e7eb 8px, #e5e7eb 16px); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-10">
+    <div id="gate-loading" class="pt-20 text-center text-gray-400 text-sm">正在校验登录状态…</div>
+    <div id="app" class="max-w-[1000px] mx-auto px-4 py-6 hidden">
+        <div class="mb-6 flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">🤝 我的服务</h1>
+                <p class="text-sm text-gray-500 mt-1">只显示管理员/社工分配给你的活动与配对孩子；服务提示由机构按活动配置；孩子敏感信息（过敏原/情绪触发点/如厕习惯）仅社工可见，志愿者端不下发。</p>
+            </div>
+        </div>
+        <div id="assignments" class="space-y-6"></div>
+    </div>
+
+    <script>
+        bootGate({ minPerm: "volunteer_portal", minPermLabel: "志愿者端" }).then(user => {
+            $("gate-loading").classList.add("hidden");
+            if (!user) return;
+            $("app").classList.remove("hidden");
+            load();
+        });
+
+        async function load() {
+            try {
+                const body = await api("/api/volunteer/my_assignments");
+                if (!body.data.length) {
+                    $("assignments").innerHTML = `<div class="bg-white rounded-lg shadow p-10 text-center text-gray-400 text-sm">
+                        暂无活动安排。志愿者由机构管理员/社工配对到具体活动和孩子后，这里才会显示服务信息。</div>`;
+                    return;
+                }
+                $("assignments").innerHTML = body.data.map(groupHtml).join("");
+            } catch (e) { toast(e.message, false); }
+        }
+
+        function groupHtml(g) {
+            const a = g.activity;
+            const tags = (a.tags || []).map(t => `<span class="px-1.5 py-0.5 rounded text-[11px] bg-teal-50 text-teal-600 mr-1">${esc(t)}</span>`).join("");
+            return `<div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="px-4 py-3 bg-teal-50/60 border-b border-teal-100">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h3 class="font-bold text-gray-800">📅 ${esc(a.name)}</h3>
+                        <span class="text-xs px-2 py-0.5 rounded bg-teal-600 text-white">${esc(a.status || "")}</span>
+                        ${tags}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">${esc(a.time || "")}${a.location ? " · " + esc(a.location) : ""}</div>
+                </div>
+                <div class="p-4 space-y-4">
+                    ${g.children.map(childHtml).join("")}
+                </div>
+            </div>`;
+        }
+
+        function childHtml(c) {
+            const tips = c.service_tips || {};
+            const tipKeys = Object.keys(tips);
+            const att = c.attendance_status;
+            return `<div class="border border-gray-200 rounded-lg p-4" id="child-${c.assignment_id}">
+                <div class="flex flex-wrap items-center gap-2 mb-3">
+                    <span class="font-semibold text-gray-800">${esc(c.student_real_name)}</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600">小名：${esc(c.student_nickname)}</span>
+                    <span class="text-xs text-gray-500">家长 ${esc(c.parent_name)} · ${esc(c.parent_phone_masked)}</span>
+                    ${att ? `<span class="text-xs px-2 py-0.5 rounded ${att === "到场" ? "bg-green-100 text-green-700" : att === "未到场" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}">已登记：${esc(att)}</span>` : `<span class="text-xs text-gray-400">未登记签到</span>`}
+                </div>
+
+                <!-- 敏感字段占位（仅社工可见） -->
+                <div class="locked rounded-lg px-3 py-2 mb-3 text-xs text-gray-500 flex items-center gap-2">
+                    🔒 过敏原 / 情绪触发点 / 如厕习惯：<b>仅社工可见</b>
+                    <span class="text-gray-400">（如需了解请联系负责社工；你的查看行为不会也无需越权）</span>
+                </div>
+
+                <!-- 服务提示（按活动启用的维度显示） -->
+                ${tipKeys.length ? `<div class="tip-card p-3 mb-3">
+                    <div class="text-xs font-semibold text-sky-700 mb-1.5">📋 本活动服务提示</div>
+                    <div class="space-y-1">${tipKeys.map(k => `<div class="text-xs"><b class="text-sky-800">${esc(k)}：</b><span class="text-gray-600">${esc(tips[k])}</span></div>`).join("")}</div>
+                </div>` : `<div class="bg-gray-50 border border-gray-100 rounded-lg p-3 mb-3 text-xs text-gray-400">本活动未配置需要志愿者阅读的服务提示</div>`}
+                ${c.note ? `<div class="text-xs text-gray-500 mb-3">📝 配对备注：${esc(c.note)}</div>` : ""}
+
+                <!-- 签到 -->
+                <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+                    <span class="text-xs text-gray-500">现场签到：</span>
+                    <button onclick="sign(${c.assignment_id},'到场',this)" class="att-btn ${att === "到场" ? "active-ok" : ""}">✓ 到场</button>
+                    <button onclick="sign(${c.assignment_id},'未到场',this)" class="att-btn ${att === "未到场" ? "active-no" : ""}">✗ 未到场</button>
+                    <button onclick="sign(${c.assignment_id},'临时到场',this)" class="att-btn ${att === "临时到场" ? "active-temp" : ""}">◐ 临时到场</button>
+                    <input id="note-${c.assignment_id}" placeholder="备注（如：奶奶临时送来）" value="${esc(c.attendance_note || "")}"
+                        class="flex-1 min-w-[180px] border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+            </div>`;
+        }
+
+        async function sign(assignmentId, status, btn) {
+            const note = $(`note-${assignmentId}`).value.trim();
+            if (status === "未到场" && !note && !confirm("未到场请尽量填写原因备注，确定不填直接登记？")) return;
+            try {
+                const body = await api("/api/volunteer/attendance", { method: "POST", body: { assignment_id: assignmentId, status, note } });
+                toast(body.message);
+                load(); // 刷新状态
+            } catch (e) { toast(e.message, false); }
+        }
+    </script>
+</body>
+</html>

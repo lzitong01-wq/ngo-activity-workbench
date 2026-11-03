@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 / 注册</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-btn { padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
+        .tab-btn.active { background: #fff; border-color: #e5e7eb; font-weight: 600; color: #1d4ed8; }
+        .tab-btn:not(.active) { color: #6b7280; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-purple-50 to-orange-50 min-h-screen flex items-center justify-center px-4 py-8">
+    <div class="w-full max-w-4xl grid md:grid-cols-2 gap-6">
+        <!-- 左：登录 -->
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden self-start">
+            <div class="px-6 pt-6">
+                <h1 class="text-2xl font-bold text-gray-800">🌈 示例公益机构</h1>
+                <p class="text-sm text-gray-500 mt-1">报名管理 · 现场签到 · 服务提示系统</p>
+            </div>
+            <div class="flex px-6 mt-4 border-b border-gray-200" id="login-tabs">
+                <div class="tab-btn active" data-tab="password">账号密码登录</div>
+                <div class="tab-btn" data-tab="code">手机验证码登录</div>
+            </div>
+            <div class="p-6 pt-4">
+                <!-- 密码登录（社工/管理员；社工也可用工号登录） -->
+                <form id="form-password" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">账号（用户名 / 手机号 / 社工工号）</label>
+                        <input id="lp-username" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="如 admin 或工号">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">口令</label>
+                        <input id="lp-password" type="password" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition">登 录</button>
+                    <p class="text-xs text-gray-400 leading-relaxed">社工/康复师账号由机构管理员审核开通；管理员账号由机构负责人开通或持邀请码注册。志愿者与家长请使用右侧验证码登录。</p>
+                </form>
+                <!-- 验证码登录（家长/志愿者） -->
+                <form id="form-code" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">手机号</label>
+                        <input id="lc-phone" maxlength="11" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="报名时填写的手机号">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">短信验证码（演示环境直接显示）</label>
+                        <div class="flex gap-2">
+                            <input id="lc-code" maxlength="6" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="6 位验证码">
+                            <button type="button" id="btn-send" class="px-3 py-2 rounded-lg border border-blue-500 text-blue-600 text-sm hover:bg-blue-50 whitespace-nowrap">获取验证码</button>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-2.5 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition">登 录</button>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>家长</b>：用报名时的手机号登录，系统自动绑定你家庭的报名记录，只能查看和确认本人报名。<b>志愿者</b>：需先注册并审核通过，再用手机号+验证码登录。</p>
+                </form>
+                <div id="login-msg" class="mt-3 text-sm"></div>
+            </div>
+        </div>
+
+        <!-- 右：注册 + 演示 -->
+        <div class="space-y-6">
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="flex px-4 pt-3 border-b border-gray-200" id="reg-tabs">
+                    <div class="tab-btn active text-xs" data-role="volunteer">志愿者注册</div>
+                    <div class="tab-btn text-xs" data-role="social_worker">社工/老师注册</div>
+                    <div class="tab-btn text-xs" data-role="admin">管理员注册</div>
+                </div>
+                <form id="form-register" class="p-5 space-y-3">
+                    <input type="hidden" id="reg-role" value="volunteer">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">姓名 <span class="text-red-500">*</span></label>
+                        <input id="reg-name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">手机号 <span class="text-red-500">*</span>（注册后即为登录账号）</label>
+                        <input id="reg-phone" maxlength="11" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div id="reg-org-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-1">所属机构 <span class="text-red-500">*</span></label>
+                        <input id="reg-org" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="如：示例公益机构">
+                    </div>
+                    <div id="reg-staff-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-1">工号 / 岗位 <span class="text-red-500">*</span></label>
+                        <input id="reg-staff" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="如：SW-2026-012 / 康复师">
+                    </div>
+                    <div id="reg-invite-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-1">机构邀请码 <span class="text-red-500">*</span>（向机构负责人获取）</label>
+                        <input id="reg-invite" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 rounded-lg bg-gray-800 text-white text-sm font-semibold hover:bg-black transition">提交注册申请</button>
+                    <p class="text-xs text-gray-400 leading-relaxed">提交后进入「待审核」，<b>审核通过前不能使用任何管理功能</b>；实际角色以审核人确认为准。家长无需注册，直接用报名手机号验证码登录。</p>
+                </form>
+            </div>
+
+            <div id="demo-box" class="bg-amber-50 border border-amber-200 rounded-2xl shadow p-5">
+                <h3 class="font-bold text-amber-800 text-sm mb-1">🧪 演示账号一键登录</h3>
+                <p class="text-xs text-amber-600 mb-3">走真实登录接口（不同角色进入不同界面）。验证码登录会自动调用发送接口并回填。</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="demoLogin('admin')" class="py-2 rounded-lg bg-purple-600 text-white text-xs hover:bg-purple-700">管理员 admin</button>
+                    <button onclick="demoLogin('social_worker')" class="py-2 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700">社工（演示）</button>
+                    <button onclick="demoLogin('volunteer')" class="py-2 rounded-lg bg-green-600 text-white text-xs hover:bg-green-700">志愿者（演示）</button>
+                    <button onclick="demoLogin('parent')" class="py-2 rounded-lg bg-orange-500 text-white text-xs hover:bg-orange-600">家长（演示）</button>
+                </div>
+                <p id="demo-hint" class="text-xs text-amber-700 mt-3 leading-relaxed"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const msg = (html, ok) => {
+            document.getElementById("login-msg").innerHTML =
+                `<div class="rounded-lg px-3 py-2 ${ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}">${html}</div>`;
+        };
+
+        // ---------- 登录 tab ----------
+        document.querySelectorAll("#login-tabs .tab-btn").forEach(t => t.onclick = () => {
+            document.querySelectorAll("#login-tabs .tab-btn").forEach(x => x.classList.remove("active"));
+            t.classList.add("active");
+            document.getElementById("form-password").classList.toggle("hidden", t.dataset.tab !== "password");
+            document.getElementById("form-code").classList.toggle("hidden", t.dataset.tab !== "code");
+        });
+
+        // ---------- 密码登录 ----------
+        document.getElementById("form-password").onsubmit = async e => {
+            e.preventDefault();
+            try {
+                const r = await fetch("/api/auth/login_password", {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: $("lp-username").value.trim(), password: $("lp-password").value }),
+                });
+                const body = await r.json();
+                if (!r.ok) return msg(`❌ ${body.error || "登录失败"}${body.status ? "（状态：" + body.status + "）" : ""}`, false);
+                location.href = homeFor(body.data.role);
+            } catch (err) { msg("❌ 网络错误，请重试", false); }
+        };
+
+        // ---------- 验证码 ----------
+        document.getElementById("btn-send").onclick = async () => {
+            const phone = $("lc-phone").value.trim();
+            if (!/^1\d{10}$/.test(phone)) return msg("❌ 请输入 11 位手机号", false);
+            try {
+                const body = await fetch("/api/auth/send_code", {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone }),
+                }).then(r => r.json());
+                if (body.data && body.data.code) {
+                    $("lc-code").value = body.data.code;   // Demo：短信模拟，直接回填
+                    msg(`📩 验证码已发送（演示环境短信模拟：<b>${body.data.code}</b>，5 分钟内有效）`, true);
+                } else msg("❌ " + (body.error || "发送失败"), false);
+            } catch (e) { msg("❌ 网络错误", false); }
+        };
+
+        document.getElementById("form-code").onsubmit = async e => {
+            e.preventDefault();
+            try {
+                const r = await fetch("/api/auth/login_code", {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone: $("lc-phone").value.trim(), code: $("lc-code").value.trim() }),
+                });
+                const body = await r.json();
+                if (!r.ok) return msg(`❌ ${body.error || "登录失败"}`, false);
+                location.href = homeFor(body.data.role);
+            } catch (err) { msg("❌ 网络错误，请重试", false); }
+        };
+
+        // ---------- 注册 tab ----------
+        document.querySelectorAll("#reg-tabs .tab-btn").forEach(t => t.onclick = () => {
+            document.querySelectorAll("#reg-tabs .tab-btn").forEach(x => x.classList.remove("active"));
+            t.classList.add("active");
+            const role = t.dataset.role;
+            document.getElementById("reg-role").value = role;
+            $("reg-org-wrap").classList.toggle("hidden", role === "volunteer");
+            $("reg-staff-wrap").classList.toggle("hidden", role !== "social_worker");
+            $("reg-invite-wrap").classList.toggle("hidden", role !== "admin");
+        });
+
+        document.getElementById("form-register").onsubmit = async e => {
+            e.preventDefault();
+            try {
+                const r = await fetch("/api/auth/register", {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        apply_role: $("reg-role").value, display_name: $("reg-name").value.trim(),
+                        phone: $("reg-phone").value.trim(), org_name: $("reg-org").value.trim(),
+                        staff_no: $("reg-staff").value.trim(), invite_code: $("reg-invite").value.trim(),
+                    }),
+                });
+                const body = await r.json();
+                if (!r.ok) return msg("❌ " + (body.error || "注册失败"), false);
+                msg(`✅ ${body.message}`, true);
+                $("reg-name").value = $("reg-phone").value = $("reg-org").value = $("reg-staff").value = $("reg-invite").value = "";
+            } catch (err) { msg("❌ " + err.message, false); }
+        };
+
+        // ---------- 演示账号（凭据由服务端按配置提供，源码内不含口令） ----------
+        const DEMO_HINT = {
+            admin: "管理员：全部功能（账号审核、权限配置、活动/报名/签到/导出/历史库）",
+            social_worker: "社工：报名管理、异常处理、签到回传、导出、历史库、敏感字段",
+            volunteer: "志愿者：只能看「我的服务」——被配对的活动安排与孩子服务提示，敏感字段不可见",
+            parent: "家长：只能看「我的报名」并做确认/授权",
+        };
+        let DEMO_ACCTS = {};
+        fetch("/api/demo-accounts").then(r => r.json()).then(j => {
+            if (j.enabled) (j.accounts || []).forEach(a => { DEMO_ACCTS[a.kind] = a; });
+            else {
+                const box = document.getElementById("demo-box");
+                if (box) box.style.display = "none";
+            }
+        }).catch(() => {});
+        document.getElementById("demo-hint").textContent = "点击按钮即可体验对应角色视角。";
+
+        async function demoLogin(kind) {
+            document.getElementById("demo-hint").textContent = DEMO_HINT[kind] || "";
+            const a = DEMO_ACCTS[kind];
+            if (!a) return msg("❌ 演示登录未开启，请设置 ENABLE_DEMO_LOGIN=1", false);
+            try {
+                if (kind === "admin" || kind === "social_worker") {
+                    const r = await fetch("/api/auth/login_password", {
+                        method: "POST", credentials: "same-origin",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username: a.username, password: a.password }),
+                    });
+                    const body = await r.json();
+                    if (!r.ok) return msg("❌ " + (body.error || "演示账号登录失败（请确认已运行 seed_data.py）"), false);
+                    location.href = homeFor(body.data.role);
+                } else {
+                    const phone = a.phone;
+                    const c = await fetch("/api/auth/send_code", {
+                        method: "POST", credentials: "same-origin",
+                        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }),
+                    }).then(r => r.json());
+                    if (!c.data || !c.data.code) return msg("❌ " + (c.error || "验证码获取失败"), false);
+                    const r = await fetch("/api/auth/login_code", {
+                        method: "POST", credentials: "same-origin",
+                        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code: c.data.code }),
+                    });
+                    const body = await r.json();
+                    if (!r.ok) return msg("❌ " + (body.error || "登录失败"), false);
+                    location.href = homeFor(body.data.role);
+                }
+            } catch (e) { msg("❌ 网络错误", false); }
+        }
+
+        function homeFor(role) {
+            return { volunteer: "/static/volunteer.html", parent: "/static/parent.html" }[role] || "/static/index.html";
+        }
+    </script>
+</body>
+</html>

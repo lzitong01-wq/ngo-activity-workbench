@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>群接龙导入与人工兜底</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .anomaly-row { background-color: #fef2f2 !important; }
+        .anomaly-row:hover { background-color: #fee2e2 !important; }
+        .confirmed-ok-row { background-color: #f0fdf4 !important; }
+        .confirmed-ok-row:hover { background-color: #dcfce7 !important; }
+        .editable:focus { outline: 2px solid #3b82f6; background-color: #eff6ff; }
+        .editable { border-bottom: 1px dashed #cbd5e1; }
+        .editable:hover { border-bottom-color: #3b82f6; }
+        .tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 3px; white-space: nowrap; }
+        .tag-system { background-color: #fee2e2; color: #991b1b; }
+        .tag-manual { background-color: #ffedd5; color: #9a3412; }
+        .tag-confirmed { background-color: #dcfce7; color: #166534; }
+        .tag-history { background-color: #ede9fe; color: #5b21b6; }
+        .tag-autofill { background-color: #cffafe; color: #0e7490; }
+        .tag-remove { cursor: pointer; font-weight: 700; opacity: .6; }
+        .tag-remove:hover { opacity: 1; }
+        .raw-text { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raw-text:hover { white-space: normal; overflow: visible; }
+        .log-item { border-bottom: 1px solid #f3f4f6; padding: 6px 0; font-size: 12px; }
+        .log-item:last-child { border-bottom: none; }
+        .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
+        .tab-inactive { color: #6b7280; }
+        .chip { display: inline-block; padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 999px; font-size: 12px; cursor: pointer; margin: 0 6px 6px 0; }
+        .chip-selected { background-color: #fff7ed; border-color: #f97316; color: #9a3412; font-weight: 600; }
+        .step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af; }
+        .step-done { color: #059669; font-weight: 600; }
+        .step-active { color: #2563eb; font-weight: 600; }
+        .dup-diff { background-color: #fef9c3 !important; }
+        .dup-card { border: 1px solid #fde68a; }
+        .flash-row { animation: rowflash 2s ease-out; }
+        @keyframes rowflash { 0% { background-color: #bfdbfe; } 100% { background-color: transparent; } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-4 py-6">
+        <div class="mb-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">群接龙导入 · 人工兜底</h1>
+                <p class="text-sm text-gray-500 mt-1">AI 只做解析、识别、提醒；合并、修正、补全、确认全部由人拍板，全程留痕；报名自动比对历史信息库，命中提示人工核对</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/static/activities.html" data-perm="manage_activities" class="text-teal-600 hover:text-teal-800 text-sm">活动管理 →</a>
+                <a href="/static/attendance.html" data-perm="attendance_callback" class="text-amber-600 hover:text-amber-800 text-sm">现场签到 →</a>
+                <a href="/static/profiles.html" data-perm="history_profiles" class="text-violet-600 hover:text-violet-800 text-sm">历史信息库 →</a>
+                <a href="/static/users.html" data-perm="manage_users" class="text-purple-600 hover:text-purple-800 text-sm">账号权限 →</a>
+                <a href="/static/volunteer.html" data-perm="volunteer_portal" class="text-green-600 hover:text-green-800 text-sm">我的服务 →</a>
+                <a href="/static/parent.html" data-perm="parent_portal" class="text-orange-600 hover:text-orange-800 text-sm">我的报名 →</a>
+                <a href="/static/index.html" class="text-blue-600 hover:text-blue-800 text-sm">← 返回统一报名列表</a>
+            </div>
+        </div>
+
+        <!-- 流程指示器 -->
+        <div class="bg-white rounded-lg shadow px-4 py-3 mb-6">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2" id="flow-steps">
+                <span class="step" data-step="1">① 粘贴/上传</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="2">② 自动解析</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="3">③ 改字段（实时重校验）</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="4">④ 手动补漏</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="5">⑤ 手动打标</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="6">⑥ 确认无误</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="7">⑦ 导出</span><span class="text-gray-300">›</span>
+                <span class="step" data-step="8">⑧ 确认入库</span>
+            </div>
+        </div>
+
+        <!-- 归属活动（任务3.5：两个导入方式共用，解析前必须选择） -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6">
+            <div class="flex flex-wrap items-end gap-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">归属活动 <span class="text-red-500">*</span>（只显示进行中的活动，每条报名必须归属一个活动）</label>
+                    <select id="activity-select" class="border border-gray-300 rounded px-3 py-2 text-sm min-w-[320px]">
+                        <option value="">— 请选择归属活动 —</option>
+                    </select>
+                </div>
+                <p class="text-xs text-gray-400 self-center">解析后的每条报名都会带上该活动归属；异常处理与留痕挂在活动下，可在 <a href="/static/activities.html" class="underline text-teal-600">活动管理</a> 按活动查看归档。</p>
+            </div>
+        </div>
+
+        <!-- 导入方式 Tab -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="border-b border-gray-200">
+                <div class="flex">
+                    <button onclick="switchTab('text')" id="tab-text" class="tab-active px-6 py-3 text-sm focus:outline-none">粘贴群接龙文本</button>
+                    <button onclick="switchTab('file')" id="tab-file" class="tab-inactive px-6 py-3 text-sm focus:outline-none">上传 CSV/Excel 文件</button>
+                </div>
+            </div>
+            <div class="p-6">
+                <div id="panel-text">
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">操作人（用于操作留痕）</label>
+                        <input type="text" id="uploader-text" value="社工小张" class="border border-gray-300 rounded px-3 py-2 text-sm w-48">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">粘贴群接龙文本</label>
+                        <textarea id="paste-text" rows="8" placeholder="粘贴微信群接龙内容..." class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"></textarea>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="parseText()" class="px-6 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">解析文本</button>
+                        <button onclick="fillSampleText()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition">填入示例</button>
+                    </div>
+                </div>
+                <div id="panel-file" class="hidden">
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">操作人（用于操作留痕）</label>
+                        <input type="text" id="uploader-file" value="运营小陈" class="border border-gray-300 rounded px-3 py-2 text-sm w-48">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">群接龙文件（.csv / .xlsx）</label>
+                        <input type="file" id="file" accept=".csv,.xlsx,.xls" class="border border-gray-300 rounded px-3 py-2 text-sm w-72">
+                    </div>
+                    <button onclick="uploadFile()" class="px-6 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">上传并解析</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 状态提示 -->
+        <div id="upload-status" class="hidden mb-4 text-sm"></div>
+
+        <!-- 预览区域 -->
+        <div id="preview-section" class="hidden">
+            <!-- 疑似重复分组处理区 -->
+            <div id="dup-section" class="mb-6"></div>
+
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3 bg-gray-50">
+                    <div>
+                        <h3 class="font-bold text-gray-800">解析预览 · 可直接在表格里改</h3>
+                        <p class="text-xs text-gray-500 mt-0.5" id="preview-info">-</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="addNewRecord()" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded hover:bg-indigo-700 transition">+ 手动补漏</button>
+                        <button onclick="showAllLogs()" class="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition">全部操作日志</button>
+                        <button onclick="exportPreview('csv')" class="px-4 py-2 text-sm text-white bg-slate-600 rounded hover:bg-slate-700 transition">导出处理结果 CSV</button>
+                        <button onclick="exportPreview('xlsx')" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700 transition">导出 Excel</button>
+                        <button onclick="confirmImport()" class="px-5 py-2 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 transition">确认入库</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto max-h-[720px] overflow-y-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-100 sticky top-0 z-10">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">行号</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">学生真名✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">学生小名✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">家长姓名✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">手机号✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">关系✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">备注✎</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600 w-64">异常标签</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">状态</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">原始接龙行</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-600">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="preview-body" class="divide-y divide-gray-200 bg-white"></tbody>
+                    </table>
+                </div>
+                <div class="px-4 py-2 bg-gray-50 border-t text-xs text-gray-500">
+                    点击虚线字段即可编辑，回车或点击别处自动保存并即时重新校验异常。<span class="text-red-600">红底</span>=有异常待处理，<span class="text-green-600">绿底</span>=已人工确认无误。
+                </div>
+            </div>
+        </div>
+
+        <!-- 结果 -->
+        <div id="result-section" class="hidden mt-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <h3 class="font-bold text-emerald-800 mb-1">入库成功</h3>
+            <p class="text-sm text-emerald-700" id="result-text">-</p>
+            <a href="/static/index.html" class="inline-block mt-3 text-sm text-emerald-700 underline hover:text-emerald-900">去统一报名列表查看 →</a>
+        </div>
+    </div>
+
+    <!-- 新增行弹窗 -->
+    <div id="add-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeAddModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="font-bold text-gray-800 mb-1">手动补漏：新增一行报名</h3>
+                <p class="text-xs text-gray-500 mb-4">用于群里漏接龙、电话补报的情况。新增后同样进入异常检测。</p>
+                <div class="space-y-3">
+                    <input type="text" id="add-real" placeholder="学生真名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="add-nick" placeholder="学生小名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="add-parent" placeholder="家长姓名" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="add-phone" placeholder="手机号" class="w-full border rounded px-3 py-2 text-sm">
+                    <input type="text" id="add-relation" placeholder="与孩子关系（妈妈/爸爸/奶奶…）" class="w-full border rounded px-3 py-2 text-sm">
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button onclick="closeAddModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">取消</button>
+                    <button onclick="submitAddRecord()" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded hover:bg-indigo-700">新增</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 手动打标弹窗 -->
+    <div id="tag-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeTagModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                <h3 class="font-bold text-gray-800 mb-1">手动添加异常标签</h3>
+                <p class="text-xs text-gray-500 mb-4" id="tag-modal-target">-</p>
+                <div class="mb-3">
+                    <div class="text-xs text-gray-500 mb-2">常用标签（可多选）</div>
+                    <div id="tag-presets" class="flex flex-wrap"></div>
+                </div>
+                <div class="mb-4">
+                    <div class="text-xs text-gray-500 mb-2">自定义标签</div>
+                    <div class="flex gap-2">
+                        <input type="text" id="tag-custom" placeholder="例如：需电话回访确认" class="flex-1 border rounded px-3 py-2 text-sm">
+                        <button onclick="addCustomTag()" class="px-3 py-2 text-sm text-white bg-orange-600 rounded hover:bg-orange-700">添加</button>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <div class="text-xs text-gray-500 mb-2">该记录当前的人工标签（点 × 移除）</div>
+                    <div id="tag-current" class="flex flex-wrap"></div>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button onclick="closeTagModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">完成</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史命中核对弹窗 -->
+    <div id="history-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeHistoryModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
+                <h3 class="font-bold text-gray-800 mb-1">历史信息库核对（只提示、人工拍板）</h3>
+                <p class="text-xs text-gray-500 mb-4" id="history-modal-target">-</p>
+                <div id="history-modal-body"></div>
+                <div class="mt-4 flex justify-end">
+                    <button onclick="closeHistoryModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作日志弹窗 -->
+    <div id="logs-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeLogsModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[80vh] overflow-y-auto">
+                <h3 class="font-bold text-gray-800 mb-1">本次导入的操作留痕</h3>
+                <p class="text-xs text-gray-500 mb-4" id="logs-modal-info">-</p>
+                <div id="logs-modal-content" class="space-y-2"></div>
+                <div class="mt-4 flex justify-end">
+                    <button onclick="closeLogsModal()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[60] hidden">
+        <div class="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg" id="toast-text"></div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        let currentPreview = null;
+        let currentOperator = "社工";
+        let activeTab = 'text';
+        let tagModalIdx = null;
+        let historyModalIdx = null;
+        let toastTimer = null;
+
+        const SAMPLE_TEXT = `1. 家长C 赵小云 云云 10000000015
+2. 钱女士 钱小多 小多 10000000016
+3. 家长F 示例儿童E 小D 10000000013
+4. 李女士 李小雨 小雨 10000000007
+5. 周女士 周小安 安安 10000000005
+6. 吴女士 吴小宝 宝宝 10000000015
+7. 郑女士 郑小满`;
+
+        // 任务3.5：加载进行中活动（解析前必须选择归属活动）
+        async function loadActivities() {
+            try {
+                const res = await fetch(`${API_BASE}/api/activities`);
+                const json = await res.json();
+                const sel = document.getElementById('activity-select');
+                (json.data || []).filter(a => a.status === '进行中').forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = `${a.name} · 已报 ${a.enrollment_count}${a.capacity ? '/' + a.capacity : ''} 人${a.deadline ? ' · 截止 ' + a.deadline : ''}`;
+                    sel.appendChild(opt);
+                });
+            } catch (err) { console.error('加载活动失败', err); }
+        }
+        // 任务5：启动门禁——群接龙导入属报名管理功能，校验登录态与权限
+        bootGate({ minPerm: "manage_enrollments", minPermLabel: "报名管理与异常处理" }).then(user => {
+            if (!user) return;
+            loadActivities();
+        });
+
+        function switchTab(tab) {
+            activeTab = tab;
+            document.getElementById('tab-text').className = tab === 'text' ? 'tab-active px-6 py-3 text-sm focus:outline-none' : 'tab-inactive px-6 py-3 text-sm focus:outline-none';
+            document.getElementById('tab-file').className = tab === 'file' ? 'tab-active px-6 py-3 text-sm focus:outline-none' : 'tab-inactive px-6 py-3 text-sm focus:outline-none';
+            document.getElementById('panel-text').classList.toggle('hidden', tab !== 'text');
+            document.getElementById('panel-file').classList.toggle('hidden', tab !== 'file');
+        }
+
+        function fillSampleText() {
+            document.getElementById('paste-text').value = SAMPLE_TEXT;
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('upload-status');
+            el.textContent = msg;
+            el.className = `mb-4 text-sm ${type === 'error' ? 'text-red-600' : type === 'loading' ? 'text-blue-600' : 'text-green-600'}`;
+            el.classList.remove('hidden');
+        }
+
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+        }
+
+        function markStep(n) {
+            document.querySelectorAll('#flow-steps .step').forEach(el => {
+                const s = parseInt(el.dataset.step, 10);
+                el.classList.remove('step-done', 'step-active');
+                if (s < n) el.classList.add('step-done');
+                if (s === n) el.classList.add('step-active');
+            });
+        }
+
+        async function parseText() {
+            const text = document.getElementById('paste-text').value.trim();
+            currentOperator = document.getElementById('uploader-text').value.trim() || '社工';
+            const activityId = document.getElementById('activity-select').value;
+            if (!activityId) return showStatus('请先选择归属活动（每条报名必须归属一个活动）', 'error');
+            if (!text) return showStatus('请先粘贴群接龙文本', 'error');
+            showStatus('解析中...', 'loading');
+            markStep(2);
+            await submitParse(`${API_BASE}/api/import/group_signup_text`, { text, uploader: currentOperator, source_user: currentOperator, activity_id: parseInt(activityId, 10) });
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('file');
+            currentOperator = document.getElementById('uploader-file').value.trim() || '运营导入';
+            const activityId = document.getElementById('activity-select').value;
+            if (!activityId) return showStatus('请先选择归属活动（每条报名必须归属一个活动）', 'error');
+            if (!fileInput.files || fileInput.files.length === 0) return showStatus('请先选择文件', 'error');
+            showStatus('解析中...', 'loading');
+            markStep(2);
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('uploader', currentOperator);
+            formData.append('source_user', currentOperator);
+            formData.append('activity_id', activityId);
+            await submitParse(`${API_BASE}/api/import/group_signup`, formData, true);
+        }
+
+        async function submitParse(url, body, isFormData = false) {
+            try {
+                const options = { method: 'POST' };
+                if (isFormData) {
+                    options.body = body;
+                } else {
+                    options.headers = { 'Content-Type': 'application/json' };
+                    options.body = JSON.stringify(body);
+                }
+                const res = await fetch(url, options);
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '解析失败');
+                currentPreview = json;
+                renderPreview(json);
+                document.getElementById('upload-status').classList.add('hidden');
+                markStep(3);
+                toast(`解析完成：${json.total} 条，其中 ${json.anomaly_count} 条待人工处理`);
+            } catch (err) {
+                showStatus('解析失败：' + err.message, 'error');
+            }
+        }
+
+        function renderPreview(data) {
+            document.getElementById('preview-section').classList.remove('hidden');
+            document.getElementById('result-section').classList.add('hidden');
+            const confirmed = data.records.filter(r => r.confirmed_ok).length;
+            const manual = data.records.filter(r => (r.manual_tags || []).length > 0).length;
+            const activityText = data.activity ? ` ｜ 归属活动：<span class="text-teal-700 font-semibold">${escapeHtml(data.activity.name)}</span>` : '';
+            document.getElementById('preview-info').innerHTML =
+                `导入批次：${data.import_batch_id} ｜ 共 ${data.total} 条 ｜ 异常 ${data.anomaly_count} 条 ｜ 已人工确认 ${confirmed} 条 ｜ 人工打标 ${manual} 条${activityText}`;
+
+            const tbody = document.getElementById('preview-body');
+            tbody.innerHTML = data.records.map((row, idx) => renderRow(row, idx)).join('');
+            renderDupSection();
+        }
+
+        function renderRow(row, idx) {
+            const systemTags = row.system_tags || [];
+            const manualTags = row.manual_tags || [];
+            const hasAnomaly = (row.anomaly_tags && row.anomaly_tags.length > 0);
+            const confirmedOk = !!row.confirmed_ok;
+
+            let rowClass = 'hover:bg-gray-50';
+            if (confirmedOk && !hasAnomaly) rowClass = 'confirmed-ok-row';
+            else if (hasAnomaly) rowClass = 'anomaly-row';
+
+            const tagsHtml = [
+                ...systemTags.map(t => `<span class="tag tag-system" title="系统识别">${escapeHtml(t)}</span>`),
+                ...manualTags.map(t => `<span class="tag tag-manual" title="人工判断">${escapeHtml(t)}<span class="tag-remove" onclick="removeManualTag(${idx}, decodeURIComponent('${encodeURIComponent(t)}'))">×</span></span>`),
+                ...(historyTagsHtml(row, idx)),
+                ...(confirmedOk ? ['<span class="tag tag-confirmed">已人工确认</span>'] : [])
+            ].join('') || '<span class="text-gray-400 text-xs">无</span>';
+
+            const editable = (field, val, w) =>
+                `<input type="text" value="${escapeHtml(val || '')}" class="editable ${w} bg-transparent text-sm px-1 py-0.5" onchange="editField(${idx}, '${field}', this.value)">`;
+
+            return `
+                <tr class="${rowClass}" id="row-${idx}">
+                    <td class="px-3 py-2 text-sm text-gray-500">${idx + 1}</td>
+                    <td class="px-3 py-2">${editable('student_real_name', row.student_real_name, 'w-24')}</td>
+                    <td class="px-3 py-2">${editable('student_nickname', row.student_nickname, 'w-20')}</td>
+                    <td class="px-3 py-2">${editable('parent_name', row.parent_name, 'w-24')}</td>
+                    <td class="px-3 py-2">${editable('phone', row.phone, 'w-28')}</td>
+                    <td class="px-3 py-2">${editable('relation', row.relation, 'w-16')}</td>
+                    <td class="px-3 py-2">${editable('note', row.note, 'w-24')}</td>
+                    <td class="px-3 py-2">${tagsHtml}</td>
+                    <td class="px-3 py-2 text-sm">${row.status || '待处理'}</td>
+                    <td class="px-3 py-2 text-xs text-gray-500" title="${escapeHtml(row.raw_text || '')}"><div class="raw-text">${escapeHtml(row.raw_text || '-')}</div></td>
+                    <td class="px-3 py-2 text-sm">
+                        <div class="flex flex-col gap-1 whitespace-nowrap">
+                            <button onclick="confirmOk(${idx})" class="text-xs text-green-700 hover:underline" ${systemTags.length === 0 ? 'disabled style="color:#9ca3af;cursor:not-allowed"' : ''}>确认无误</button>
+                            <button onclick="openTagModal(${idx})" class="text-xs text-orange-700 hover:underline">手动打标</button>
+                            <button onclick="openHistoryModal(${idx})" class="text-xs text-violet-700 hover:underline">历史核对</button>
+                            <button onclick="toggleLogs(${idx})" class="text-xs text-blue-600 hover:underline">查看日志</button>
+                        </div>
+                    </td>
+                </tr>
+                <tr id="log-row-${idx}" class="hidden bg-gray-50">
+                    <td colspan="11" class="px-4 py-3">
+                        <div class="text-sm font-medium text-gray-700 mb-2">第 ${idx + 1} 行操作日志</div>
+                        <div class="space-y-1">${renderLogs(row.operation_logs || [])}</div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderLogs(logs) {
+            if (!logs || logs.length === 0) return '<div class="text-gray-400 text-xs">暂无日志</div>';
+            return logs.map(log => {
+                let text = `[${log.time || ''}] ${log.operator || '系统'}：`;
+                if (log.type === 'edit') text += `修改「${fieldLabel(log.field)}」从「${log.old_value || '空'}」改为「${log.new_value || '空'}」`;
+                else if (log.type === 'add') text += `手动补漏新增记录`;
+                else if (log.type === 'manual_tag') text += `手动添加异常标签「${log.tag}」`;
+                else if (log.type === 'remove_manual_tag') text += `移除手动异常标签「${log.tag}」`;
+                else if (log.type === 'confirm_ok') text += `人工确认无误，解除系统标红`;
+                else if (log.type === 'confirm_revoke') text += `${log.message || '自动撤销确认无误'}`;
+                else if (log.type === 'add_note') text += `修改备注为「${log.new_value || '空'}」`;
+                else if (log.type === 'merge_preview') text += `【预览合并】${log.message || ''}`;
+                else if (log.type === 'mark_not_duplicate') text += `【非重复】${log.message || '人工判定不是同一人，本次不按重复处理'}`;
+                else if (log.type === 'unmark_not_duplicate') text += `【取消非重复】${log.message || '恢复重复检测'}`;
+                else if (log.type === 'history_confirm') text += `【历史核对】${log.message || '确认同一儿童，写入历史信息库'}`;
+                else if (log.type === 'history_ignore') text += `【历史核对】${log.message || '判定不是同一儿童，忽略提示'}`;
+                else if (log.type === 'history_autofill') text += `【自动补全】${log.message || `按历史档案补全「${fieldLabel(log.field)}」→ ${log.new_value}`}`;
+                else text += escapeHtml(log.message || JSON.stringify(log));
+                return `<div class="log-item text-gray-600">${text}</div>`;
+            }).join('');
+        }
+
+        function fieldLabel(f) {
+            return ({
+                student_real_name: '学生真名', student_nickname: '学生小名', parent_name: '家长姓名',
+                phone: '手机号', relation: '与孩子关系', note: '备注'
+            })[f] || f;
+        }
+
+        // ---------- 任务3：历史信息库命中标记 ----------
+        function historyTagsHtml(row, idx) {
+            if (row.history_status === 'confirmed') {
+                return [`<span class="tag tag-history" title="已确认写入历史信息库档案 #${row.history_profile_id}">☰已建档 #${row.history_profile_id}</span>`];
+            }
+            const hits = row.history_matches || [];
+            if (row.history_status === 'ignored') {
+                return [`<span class="tag tag-history" style="background-color:#f3f4f6;color:#6b7280;text-decoration:line-through" title="已人工判定不是同一儿童">☰命中历史（已忽略）</span>`];
+            }
+            const tags = [];
+            if (hits.length > 0) {
+                const reasons = hits[0].reasons.join('、');
+                tags.push(`<span class="tag tag-history cursor-pointer" title="命中历史档案 ${hits.length} 条（${escapeHtml(reasons)}），点「历史核对」处理" onclick="openHistoryModal(${idx})">☰命中历史×${hits.length}</span>`);
+            }
+            // 任务3.5：自动补全标签（缺失字段已按档案补全，提示人工复核）
+            const autofillLogs = (row.operation_logs || []).filter(l => l.type === 'history_autofill');
+            if (autofillLogs.length > 0) {
+                const detail = autofillLogs.map(l => `${fieldLabel(l.field)}→${l.new_value}`).join('，');
+                tags.push(`<span class="tag tag-autofill cursor-pointer" title="已按历史档案自动补全：${escapeHtml(detail)}（只补空、不覆盖），请人工复核" onclick="openHistoryModal(${idx})">⚡自动补全×${autofillLogs.length}</span>`);
+            }
+            return tags;
+        }
+
+        async function openHistoryModal(idx) {
+            historyModalIdx = idx;
+            const row = currentPreview.records[idx];
+            const hits = row.history_matches || [];
+            document.getElementById('history-modal-target').textContent =
+                `第 ${idx + 1} 行 · ${row.student_real_name || row.student_nickname || '（未填姓名）'} · ${row.phone || '无手机号'}`;
+
+            const body = document.getElementById('history-modal-body');
+            if (row.history_status === 'confirmed') {
+                body.innerHTML = `<div class="text-sm text-violet-700 bg-violet-50 border border-violet-200 rounded p-3">✓ 已确认写入历史档案 #${row.history_profile_id}。之后的新报名会自动与档案比对复用。</div>`;
+            } else if (row.history_status === 'ignored') {
+                body.innerHTML = `<div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">已人工判定：与命中的历史档案不是同一儿童，提示已忽略（留痕可查）。</div>`;
+            } else if (hits.length === 0) {
+                body.innerHTML = `
+                    <div class="text-sm text-gray-600 bg-gray-50 border rounded p-3 mb-3">未命中历史档案。</div>
+                    <button onclick="confirmHistoryPreview(0, true)" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700">写入历史信息库（沉淀建档）</button>
+                    <span class="text-xs text-gray-400 ml-2">建档后，下次报名自动比对复用</span>`;
+            } else {
+                const autofillLogs = (row.operation_logs || []).filter(l => l.type === 'history_autofill');
+                body.innerHTML = `
+                    <p class="text-xs text-violet-600 mb-2">系统只提示、不自动合并；缺失字段已按最强命中档案自动补全（只补空、不覆盖，留痕可查）。确认是同一儿童 → 点对应档案的确认按钮；都不是 → 沉淀为新档案或忽略。</p>
+                    ${autofillLogs.length ? `<div class="text-xs text-cyan-800 bg-cyan-50 border border-cyan-200 rounded px-3 py-2 mb-2">⚡ 本次已自动补全 ${autofillLogs.length} 个字段：${autofillLogs.map(l => `${fieldLabel(l.field)} → ${escapeHtml(l.new_value)}`).join('，')}（来自${escapeHtml(autofillLogs[0].tag || '命中档案')}）——请人工复核后确认</div>` : ''}
+                    <div class="space-y-2 mb-3">
+                        ${hits.map(h => {
+                            const p = h.profile;
+                            return `<div class="flex flex-wrap items-center justify-between gap-2 bg-violet-50 border border-violet-100 rounded px-3 py-2">
+                                <div class="text-sm">
+                                    <span class="font-semibold text-gray-800">档案 #${p.id} ${escapeHtml(p.student_real_name) || '（真名空）'}（${escapeHtml(p.student_nickname) || '无小名'}）</span>
+                                    <div class="text-xs text-gray-500">家长 ${escapeHtml(p.parent_name) || '空'} · ${escapeHtml(p.phone) || '无手机号'} · 历史报名 ${p.enrollment_count} 次</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    ${h.reasons.map(r => `<span class="tag tag-history">${escapeHtml(r)}</span>`).join('')}
+                                    <button onclick="confirmHistoryPreview(${p.id}, true)" class="px-3 py-1 text-xs text-white bg-violet-600 rounded hover:bg-violet-700 whitespace-nowrap">确认同一儿童</button>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="autofillPreview(${idx})" class="px-3 py-1.5 text-xs text-cyan-700 bg-white border border-cyan-300 rounded hover:bg-cyan-50" title="按命中的历史档案补全该行缺失字段（不覆盖已有值）">↻ 按档案补全</button>
+                        <button onclick="confirmHistoryPreview(0, true)" class="px-3 py-1.5 text-xs text-violet-700 bg-white border border-violet-300 rounded hover:bg-violet-100">以上都不是，沉淀为新档案</button>
+                        <button onclick="confirmHistoryPreview(0, false)" class="px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100">忽略提示（不建档）</button>
+                    </div>`;
+            }
+            document.getElementById('history-modal').classList.remove('hidden');
+        }
+
+        // 任务3.5：预览行手动按档案补全
+        async function autofillPreview(idx) {
+            const json = await operate('history_autofill', { idx });
+            if (json) {
+                currentPreview.records[idx] = json.data;
+                updateRow(idx);
+                refreshPreviewInfo();
+                renderDupSection();
+                if (json.message) toast(json.message);
+            }
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+            historyModalIdx = null;
+        }
+
+        async function confirmHistoryPreview(profileId, isSame) {
+            if (historyModalIdx === null) return;
+            const idx = historyModalIdx;
+            let tip;
+            if (!isSame) tip = '确认该行与命中的历史档案不是同一儿童？忽略后不再提示（留痕可查）。';
+            else if (profileId > 0) tip = `确认第 ${idx + 1} 行与历史档案 #${profileId} 是同一儿童？\n确认后档案立即更新（报名次数+1、空字段补全），入库后自动关联。`;
+            else tip = '把该行沉淀为新档案写入历史信息库？';
+            if (!confirm(tip)) return;
+            const action = isSame ? 'history_confirm' : 'history_ignore';
+            const json = await operate(action, { idx, profile_id: profileId });
+            if (json) {
+                currentPreview.records[idx] = json.data;
+                updateRow(idx);
+                refreshPreviewInfo();
+                renderDupSection();
+                closeHistoryModal();
+                if (json.message) toast(json.message);
+            }
+        }
+
+        function toggleLogs(idx) {
+            document.getElementById(`log-row-${idx}`).classList.toggle('hidden');
+        }
+
+        async function operate(action, payload) {
+            if (!currentPreview) return null;
+            try {
+                const res = await fetch(`${API_BASE}/api/import/operate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        preview_id: currentPreview.preview_id,
+                        action: action,
+                        operator: currentOperator,
+                        ...payload
+                    })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '操作失败');
+                return json;
+            } catch (err) {
+                toast('操作失败：' + err.message);
+                return null;
+            }
+        }
+
+        async function editField(idx, field, newValue) {
+            const oldValue = currentPreview.records[idx][field] || '';
+            const nv = (newValue || '').trim();
+            if (oldValue === nv) return;
+            const json = await operate('edit', { idx, field, old_value: oldValue, new_value: nv });
+            if (json) {
+                const before = (currentPreview.records[idx].system_tags || []).length;
+                currentPreview.records[idx] = json.data;
+                updateRow(idx);
+                refreshPreviewInfo();
+                const after = (json.data.system_tags || []).length;
+                if (after === 0 && before > 0) toast(`已保存：${fieldLabel(field)} 补全，异常自动解除`);
+                else if (after > 0 && before === 0) toast(`已保存：重新校验后发现 ${after} 项异常`);
+                else toast(`已保存并重新校验：${fieldLabel(field)}`);
+                renderDupSection(); // 字段修改可能改变重复分组（如同手机号改掉后不再成组）
+                markStep(3);
+            }
+        }
+
+        async function removeManualTag(idx, tag) {
+            const json = await operate('remove_manual_tag', { idx, tag });
+            if (json) {
+                currentPreview.records[idx] = json.data;
+                updateRow(idx);
+                refreshPreviewInfo();
+                if (tagModalIdx === idx) renderTagModal(idx);
+                toast(`已移除人工标签「${tag}」`);
+            }
+        }
+
+        async function confirmOk(idx) {
+            const json = await operate('confirm_ok', { idx });
+            if (json) {
+                currentPreview.records[idx] = json.data;
+                updateRow(idx);
+                refreshPreviewInfo();
+                markStep(6);
+                toast('已记录：人工确认无误，系统标红解除');
+            }
+        }
+
+        function updateRow(idx) {
+            const row = document.getElementById(`row-${idx}`);
+            const logRow = document.getElementById(`log-row-${idx}`);
+            if (!row || !logRow) return;
+            const temp = document.createElement('tbody');
+            temp.innerHTML = renderRow(currentPreview.records[idx], idx);
+            const newRows = Array.from(temp.children);
+            row.parentNode.replaceChild(newRows[0], row);
+            logRow.parentNode.replaceChild(newRows[1], logRow);
+        }
+
+        function refreshPreviewInfo() {
+            if (!currentPreview) return;
+            const rs = currentPreview.records;
+            currentPreview.total = rs.length;
+            currentPreview.anomaly_count = rs.filter(r => r.anomaly_tags && r.anomaly_tags.length > 0).length;
+            const confirmed = rs.filter(r => r.confirmed_ok).length;
+            const manual = rs.filter(r => (r.manual_tags || []).length > 0).length;
+            document.getElementById('preview-info').textContent =
+                `导入批次：${currentPreview.import_batch_id} ｜ 共 ${rs.length} 条 ｜ 异常 ${currentPreview.anomaly_count} 条 ｜ 已人工确认 ${confirmed} 条 ｜ 人工打标 ${manual} 条`;
+        }
+
+        function addNewRecord() {
+            document.getElementById('add-modal').classList.remove('hidden');
+            document.getElementById('add-real').focus();
+        }
+
+        // ---------- 疑似重复分组处理（与统一列表页同规则：同手机号 或 同真名同家长） ----------
+        function computePreviewDupGroups(records) {
+            const n = records.length;
+            const parent = Array.from({ length: n }, (_, i) => i);
+            const find = x => parent[x] === x ? x : (parent[x] = find(parent[x]));
+            const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+            const active = [];
+            records.forEach((r, i) => { if (!r.not_duplicate) active.push(i); });
+
+            const byPhone = {}, byName = {};
+            active.forEach(i => {
+                const r = records[i];
+                const phone = (r.phone || '').trim();
+                const real = (r.student_real_name || '').trim();
+                const par = (r.parent_name || '').trim();
+                if (phone) {
+                    if (byPhone[phone] !== undefined) { union(byPhone[phone], i); }
+                    else byPhone[phone] = i;
+                }
+                if (real && par) {
+                    const key = real + '|' + par;
+                    if (byName[key] !== undefined) { union(byName[key], i); }
+                    else byName[key] = i;
+                }
+            });
+
+            const clusters = {};
+            active.forEach(i => { const root = find(i); (clusters[root] = clusters[root] || []).push(i); });
+            const groups = [];
+            const inGroup = new Set();
+            Object.values(clusters).forEach(members => {
+                if (members.length < 2) return;
+                members.sort((a, b) => a - b);
+                members.forEach(i => inGroup.add(i));
+                const reasons = new Set();
+                const [first] = members;
+                members.slice(1).forEach(i => {
+                    const a = records[first], b = records[i];
+                    if ((a.phone || '').trim() && (a.phone || '').trim() === (b.phone || '').trim()) reasons.add('同手机号');
+                    if ((a.student_real_name || '').trim() && (a.student_real_name || '').trim() === (b.student_real_name || '').trim()
+                        && (a.parent_name || '').trim() && (a.parent_name || '').trim() === (b.parent_name || '').trim()) reasons.add('同真名同家长');
+                });
+                groups.push({ members, reasons: [...reasons] });
+            });
+
+            // 与数据库已有报名重复（不在本次预览组内）的行
+            const dbDupRows = [];
+            records.forEach((r, i) => {
+                if (r.not_duplicate || inGroup.has(i)) return;
+                if ((r.system_tags || []).some(t => t.indexOf('重复报名') === 0)) dbDupRows.push(i);
+            });
+            return { groups, dbDupRows };
+        }
+
+        function renderDupSection() {
+            if (!currentPreview) return;
+            const { groups, dbDupRows } = computePreviewDupGroups(currentPreview.records);
+            const el = document.getElementById('dup-section');
+
+            let html = '';
+            if (groups.length > 0) {
+                html += `
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <h3 class="font-bold text-gray-800">⚠ 疑似重复分组 · 共 ${groups.length} 组（自动成组展示）</h3>
+                            <span class="text-xs text-gray-400">同手机号 或 同真名同家长 自动聚在一起；点列头可跳到对应行</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-3">确认是同一人 → 点某列「保留此条，并入其余」，其余行不入库；不是同一人 → 点「本次非重复」解除重复标记。所有动作计入操作留痕。</p>
+                        <div class="space-y-4">${groups.map((g, gi) => renderDupGroupCard(g, gi)).join('')}</div>
+                    </div>`;
+            }
+            if (dbDupRows.length > 0) {
+                html += `
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
+                        <h3 class="font-bold text-amber-800 mb-2">↔ 与统一报名列表已有记录重复 · ${dbDupRows.length} 条</h3>
+                        <p class="text-xs text-amber-700 mb-2">这些行与<strong>数据库中已有报名</strong>疑似重复（预览内两两不成组）。可先「本次非重复」解除，或照常入库后到<a href="/static/index.html" class="underline font-semibold">统一报名列表</a>用「疑似重复分组」并排对比、合并。</p>
+                        <div class="flex flex-wrap gap-2">${dbDupRows.map(i => {
+                            const r = currentPreview.records[i];
+                            const name = r.student_real_name || r.student_nickname || '（未填姓名）';
+                            return `<button onclick="scrollToPreviewRow(${i})" class="text-xs bg-white border border-amber-300 rounded px-2 py-1 text-amber-800 hover:bg-amber-100">第 ${i + 1} 行 · ${escapeHtml(name)} · ${escapeHtml(r.phone || '无手机号')}</button>`;
+                        }).join('')}</div>
+                    </div>`;
+            }
+            if (!html) {
+                html = `<div class="bg-white rounded-lg shadow px-4 py-3 text-sm text-gray-500">✓ 本次解析未发现疑似重复记录（同手机号 / 同真名同家长 / 与已有报名均无冲突）</div>`;
+            }
+            el.innerHTML = html;
+        }
+
+        function renderDupGroupCard(g, gi) {
+            const rs = currentPreview.records;
+            const fields = ['student_real_name', 'student_nickname', 'parent_name', 'phone', 'relation', 'note'];
+            const members = g.members;
+
+            const cell = (field, i) => {
+                const val = rs[i][field] || '';
+                const diff = members.some(o => o !== i && (rs[o][field] || '') !== val);
+                return `<td class="px-2 py-1.5 text-sm align-top ${diff ? 'dup-diff' : ''}" title="${escapeHtml(val)}">${escapeHtml(val) || '<span class="text-gray-300">空</span>'}</td>`;
+            };
+
+            const headRow = members.map(i => {
+                const r = rs[i];
+                const name = r.student_real_name || r.student_nickname || '（未填姓名）';
+                return `<th class="px-2 py-2 text-left text-xs font-semibold text-gray-700 border-l border-gray-100">
+                            <button onclick="scrollToPreviewRow(${i})" class="hover:text-blue-600 hover:underline" title="点击跳到预览表格对应行">第 ${i + 1} 行 · ${escapeHtml(name)}</button>
+                        </th>`;
+            }).join('');
+
+            const fieldRows = fields.map(f =>
+                `<tr><td class="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">${fieldLabel(f)}</td>${members.map(i => cell(f, i)).join('')}</tr>`
+            ).join('');
+
+            const tagRow = `<tr class="bg-gray-50">
+                    <td class="px-2 py-1.5 text-xs text-gray-400">系统标签</td>
+                    ${members.map(i => `<td class="px-2 py-1.5 align-top border-l border-gray-100">${(rs[i].system_tags || []).map(t => `<span class="tag tag-system">${escapeHtml(t)}</span>`).join('') || '<span class="text-gray-300 text-xs">无</span>'}</td>`).join('')}
+                </tr>`;
+
+            const actionRow = `<tr>
+                    <td class="px-2 py-2 text-xs text-gray-400">人工处理</td>
+                    ${members.map(i => {
+                        const r = rs[i];
+                        return `<td class="px-2 py-2 border-l border-gray-100 align-top">
+                            <div class="flex flex-col gap-1">
+                                <button onclick="mergePreviewGroup(${gi}, ${i})" class="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 whitespace-nowrap">保留此条，并入其余</button>
+                                ${r.not_duplicate
+                                    ? `<button onclick="unmarkNotDuplicatePreview(${i})" class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 whitespace-nowrap">取消「非重复」</button>`
+                                    : `<button onclick="markNotDuplicatePreview(${i})" class="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">本次非重复</button>`}
+                            </div>
+                        </td>`;
+                    }).join('')}
+                </tr>`;
+
+            return `
+                <div class="dup-card border rounded-lg p-3 bg-yellow-50/40">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="text-sm font-bold text-gray-800">重复组 ${gi + 1}</span>
+                        ${g.reasons.map(r => `<span class="tag tag-system">${escapeHtml(r)}</span>`).join('')}
+                        <span class="text-xs text-gray-500">共 ${members.length} 条记录</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full border border-gray-200 bg-white rounded">
+                            <thead class="bg-gray-100"><tr><th class="px-2 py-2 text-left text-xs font-medium text-gray-400 w-16">对比项</th>${headRow}</tr></thead>
+                            <tbody class="divide-y divide-gray-100">${fieldRows}${tagRow}${actionRow}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        }
+
+        function scrollToPreviewRow(idx) {
+            const row = document.getElementById(`row-${idx}`);
+            if (!row) return;
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.remove('flash-row');
+            void row.offsetWidth;
+            row.classList.add('flash-row');
+        }
+
+        async function mergePreviewGroup(gi, keepIdx) {
+            const { groups } = computePreviewDupGroups(currentPreview.records);
+            const g = groups[gi];
+            if (!g) return;
+            const rs = currentPreview.records;
+            const keepName = rs[keepIdx].student_real_name || rs[keepIdx].student_nickname || '（未填姓名）';
+            const others = g.members.filter(i => i !== keepIdx);
+            if (!confirm(`确认组内 ${g.members.length} 条是同一个人？\n将保留第 ${keepIdx + 1} 行「${keepName}」，其余 ${others.length} 行（第 ${others.map(i => i + 1).join('、')} 行）不入库。`)) return;
+
+            // 从大索引往小删；keep_idx 跟随服务端返回的“删除后保留行位置”，避免组内保留行前的组员被删后索引失真
+            const sorted = [...others].sort((a, b) => b - a);
+            let keepCur = keepIdx;
+            let lastJson = null;
+            for (const idx of sorted) {
+                lastJson = await operate('remove_record', { idx, keep_idx: keepCur });
+                if (!lastJson) return; // 中途失败，停止（已删部分保留在服务端，界面刷新到最新）
+                keepCur = lastJson.keep_idx;
+            }
+            currentPreview.records = lastJson.records;
+            renderPreview(currentPreview);
+            refreshPreviewInfo();
+            markStep(6);
+            toast(`已合并：保留第 ${keepIdx + 1} 行，${others.length} 行不再入库，留痕已记在保留行`);
+        }
+
+        async function markNotDuplicatePreview(idx) {
+            const rs = currentPreview.records;
+            const r = rs[idx];
+            if (!confirm(`确认第 ${idx + 1} 行（${r.student_real_name || r.student_nickname || '未填姓名'}）与重复对象不是同一人？\n确认后该行不再标「重复」，组内其他行的重复标记也会同步解除。`)) return;
+            const json = await operate('mark_not_duplicate', { idx });
+            if (json) {
+                if (json.records) { currentPreview.records = json.records; renderPreview(currentPreview); }
+                else { currentPreview.records[idx] = json.data; updateRow(idx); renderDupSection(); }
+                refreshPreviewInfo();
+                markStep(5);
+                toast('已标记「本次非重复」，重复标签解除，留痕已记录');
+            }
+        }
+
+        async function unmarkNotDuplicatePreview(idx) {
+            const json = await operate('unmark_not_duplicate', { idx });
+            if (json) {
+                if (json.records) { currentPreview.records = json.records; renderPreview(currentPreview); }
+                else { currentPreview.records[idx] = json.data; updateRow(idx); renderDupSection(); }
+                refreshPreviewInfo();
+                toast('已取消「非重复」，恢复重复检测');
+            }
+        }
+
+        function closeAddModal() {
+            document.getElementById('add-modal').classList.add('hidden');
+        }
+
+        async function submitAddRecord() {
+            const record = {
+                student_real_name: document.getElementById('add-real').value.trim(),
+                student_nickname: document.getElementById('add-nick').value.trim(),
+                parent_name: document.getElementById('add-parent').value.trim(),
+                phone: document.getElementById('add-phone').value.trim(),
+                relation: document.getElementById('add-relation').value.trim(),
+                note: ''
+            };
+            if (!record.student_real_name && !record.student_nickname && !record.phone) {
+                return toast('至少填写学生真名/小名或手机号');
+            }
+            const json = await operate('add', { record });
+            if (json) {
+                currentPreview.records.push(json.data);
+                refreshPreviewInfo();
+                renderPreview(currentPreview);
+                closeAddModal();
+                ['add-real', 'add-nick', 'add-parent', 'add-phone', 'add-relation'].forEach(id => document.getElementById(id).value = '');
+                markStep(4);
+                toast('已手动补漏新增 1 条，并完成异常检测');
+            }
+        }
+
+        // ---------- 手动打标弹窗 ----------
+        async function openTagModal(idx) {
+            tagModalIdx = idx;
+            const row = currentPreview.records[idx];
+            document.getElementById('tag-modal-target').textContent =
+                `目标：第 ${idx + 1} 行 · ${row.student_real_name || row.student_nickname || '（未填姓名）'} · ${row.phone || '无手机号'}`;
+            await renderTagModal(idx);
+            document.getElementById('tag-modal').classList.remove('hidden');
+        }
+
+        async function renderTagModal(idx) {
+            const row = currentPreview.records[idx];
+            const current = row.manual_tags || [];
+
+            // 预设标签
+            let presets = [];
+            try {
+                const res = await fetch(`${API_BASE}/api/filters`);
+                const json = await res.json();
+                presets = json.manual_tag_presets || [];
+            } catch (e) {
+                presets = ['信息不实', '非本人报名', '联系方式无效', '需电话回访确认'];
+            }
+            document.getElementById('tag-presets').innerHTML = presets.map(t => {
+                const on = current.includes(t);
+                return `<span class="chip ${on ? 'chip-selected' : ''}" onclick="togglePresetTag(decodeURIComponent('${encodeURIComponent(t)}'))">${escapeHtml(t)}</span>`;
+            }).join('');
+
+            document.getElementById('tag-current').innerHTML = current.length
+                ? current.map(t => `<span class="tag tag-manual">${escapeHtml(t)}<span class="tag-remove" onclick="removeManualTag(${idx}, decodeURIComponent('${encodeURIComponent(t)}'))">×</span></span>`).join('')
+                : '<span class="text-gray-400 text-xs">暂无人工标签</span>';
+        }
+
+        async function togglePresetTag(tag) {
+            if (tagModalIdx === null) return;
+            const row = currentPreview.records[tagModalIdx];
+            const current = row.manual_tags || [];
+            const action = current.includes(tag) ? 'remove_manual_tag' : 'manual_tag';
+            const json = await operate(action, { idx: tagModalIdx, tag });
+            if (json) {
+                currentPreview.records[tagModalIdx] = json.data;
+                updateRow(tagModalIdx);
+                refreshPreviewInfo();
+                renderTagModal(tagModalIdx);
+                markStep(5);
+                toast(action === 'manual_tag' ? `已打标「${tag}」` : `已移除「${tag}」`);
+            }
+        }
+
+        async function addCustomTag() {
+            if (tagModalIdx === null) return;
+            const input = document.getElementById('tag-custom');
+            const tag = input.value.trim();
+            if (!tag) return toast('请输入标签内容');
+            const json = await operate('manual_tag', { idx: tagModalIdx, tag });
+            if (json) {
+                currentPreview.records[tagModalIdx] = json.data;
+                updateRow(tagModalIdx);
+                refreshPreviewInfo();
+                renderTagModal(tagModalIdx);
+                input.value = '';
+                markStep(5);
+                toast(`已打标「${tag}」`);
+            }
+        }
+
+        function closeTagModal() {
+            document.getElementById('tag-modal').classList.add('hidden');
+            tagModalIdx = null;
+        }
+
+        // ---------- 全部操作日志 ----------
+        function showAllLogs() {
+            if (!currentPreview) return;
+            const rs = currentPreview.records;
+            document.getElementById('logs-modal-info').textContent =
+                `导入批次：${currentPreview.import_batch_id} ｜ 操作人：${currentOperator} ｜ 共 ${rs.length} 条记录`;
+            const blocks = rs.map((row, idx) => {
+                const logs = row.operation_logs || [];
+                const title = `第 ${idx + 1} 行 · ${row.student_real_name || row.student_nickname || '（未填姓名）'}`;
+                const body = logs.length ? renderLogs(logs) : '<div class="text-gray-400 text-xs">该行无人工操作</div>';
+                return `<div class="border rounded p-3"><div class="text-sm font-medium text-gray-700 mb-1">${escapeHtml(title)}</div>${body}</div>`;
+            }).join('');
+            document.getElementById('logs-modal-content').innerHTML = blocks || '<div class="text-gray-400 text-sm">暂无日志</div>';
+            document.getElementById('logs-modal').classList.remove('hidden');
+        }
+        function closeLogsModal() {
+            document.getElementById('logs-modal').classList.add('hidden');
+        }
+
+        // ---------- 导出 ----------
+        async function exportPreview(format) {
+            if (!currentPreview) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/import/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        preview_id: currentPreview.preview_id,
+                        records: currentPreview.records,
+                        import_batch_id: currentPreview.import_batch_id,
+                        format
+                    })
+                });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    throw new Error(j.error || '导出失败');
+                }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `群接龙人工兜底结果.${format}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                markStep(7);
+                toast('已导出人工兜底结果（含系统/人工标签与操作留痕）');
+            } catch (err) {
+                toast('导出失败：' + err.message);
+            }
+        }
+
+        // ---------- 入库 ----------
+        async function confirmImport() {
+            if (!currentPreview) return;
+            const pending = currentPreview.records.filter(r => r.anomaly_tags && r.anomaly_tags.length > 0).length;
+            let tip = `确认将 ${currentPreview.records.length} 条记录写入统一报名列表？`;
+            if (pending > 0) tip += `\n其中 ${pending} 条仍带异常标签，会以「待处理」状态入库，可在统一列表继续跟进。`;
+            if (!confirm(tip)) return;
+
+            const btn = document.querySelector('#preview-section button[onclick="confirmImport()"]');
+            const originalText = btn.textContent;
+            btn.textContent = '入库中...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/import/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        preview_id: currentPreview.preview_id,
+                        records: currentPreview.records
+                    })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '入库失败');
+
+                document.getElementById('preview-section').classList.add('hidden');
+                document.getElementById('result-section').classList.remove('hidden');
+                document.getElementById('result-text').textContent =
+                    `已写入统一报名列表 ${json.count} 条，导入批次：${json.import_batch_id}。字段名、状态、异常标签与任务1保持一致，人工标签与系统标签分开保留。`;
+                markStep(8);
+                currentPreview = null;
+            } catch (err) {
+                toast('入库失败：' + err.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        markStep(1);
+    </script>
+</body>
+</html>

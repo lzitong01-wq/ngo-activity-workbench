@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账号与权限管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .perm-table th, .perm-table td { padding: 6px 8px; font-size: 12px; border: 1px solid #e5e7eb; }
+        .status-chip { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:500; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-10">
+    <div id="gate-loading" class="pt-20 text-center text-gray-400 text-sm">正在校验登录状态…</div>
+    <div id="app" class="max-w-[1300px] mx-auto px-4 py-6 hidden">
+        <div class="mb-6 flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">账号与权限管理</h1>
+                <p class="text-sm text-gray-500 mt-1">注册审核（确认实际角色）· 账号启停 · 角色调整 · 权限矩阵配置 · 操作审计留痕。关键操作需二次确认，全部写入审计日志。</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/static/index.html" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700">统一列表 →</a>
+                <a href="/static/activities.html" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700">活动管理 →</a>
+            </div>
+        </div>
+
+        <!-- 待审核 -->
+        <div class="bg-white rounded-lg shadow mb-6 overflow-hidden" id="pending-section">
+            <div class="px-4 py-3 border-b border-gray-200 bg-orange-50 flex justify-between items-center">
+                <h3 class="font-bold text-gray-800">⏳ 待审核注册申请 <span id="pending-badge" class="ml-1 text-sm font-normal text-gray-500"></span></h3>
+                <button onclick="loadUsers()" class="text-xs text-blue-600 hover:underline">刷新</button>
+            </div>
+            <div id="pending-body" class="p-4 space-y-3"></div>
+        </div>
+
+        <!-- 账号列表 -->
+        <div class="bg-white rounded-lg shadow mb-6 p-4">
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <h3 class="font-bold text-gray-800">👥 全部账号</h3>
+                <div class="flex gap-2 items-center">
+                    <select id="user-status-filter" class="border border-gray-300 rounded px-2 py-1.5 text-xs">
+                        <option value="">全部状态</option>
+                        <option value="待审核">待审核</option>
+                        <option value="启用">启用</option>
+                        <option value="停用">停用</option>
+                        <option value="已驳回">已驳回</option>
+                    </select>
+                    <button onclick="toggleCreate()" class="px-3 py-1.5 rounded bg-gray-800 text-white text-xs hover:bg-black">+ 后台开通账号</button>
+                </div>
+            </div>
+            <form id="create-form" class="hidden bg-gray-50 border border-gray-200 rounded p-3 mb-3 flex flex-wrap gap-2 items-end text-xs">
+                <div><label class="block text-gray-500 mb-1">用户名/手机号 *</label><input id="cu-username" class="border rounded px-2 py-1.5 w-32"></div>
+                <div><label class="block text-gray-500 mb-1">姓名 *</label><input id="cu-name" class="border rounded px-2 py-1.5 w-24"></div>
+                <div><label class="block text-gray-500 mb-1">角色 *</label>
+                    <select id="cu-role" class="border rounded px-2 py-1.5">
+                        <option value="social_worker">社工/康复师</option>
+                        <option value="volunteer">志愿者</option>
+                        <option value="admin">管理员</option>
+                    </select>
+                </div>
+                <div><label class="block text-gray-500 mb-1">手机号</label><input id="cu-phone" class="border rounded px-2 py-1.5 w-32"></div>
+                <div><label class="block text-gray-500 mb-1">初始口令</label><input id="cu-pwd" class="border rounded px-2 py-1.5 w-28" placeholder="默认 123456"></div>
+                <button type="submit" class="px-3 py-1.5 rounded bg-blue-600 text-white">开通</button>
+            </form>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-left text-xs text-gray-500 border-b">
+                        <th class="py-2 pr-2">ID</th><th class="py-2 pr-2">姓名</th><th class="py-2 pr-2">账号</th>
+                        <th class="py-2 pr-2">角色</th><th class="py-2 pr-2">手机</th><th class="py-2 pr-2">状态</th>
+                        <th class="py-2 pr-2">注册信息</th><th class="py-2">操作</th>
+                    </tr></thead>
+                    <tbody id="user-tbody" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 权限矩阵 -->
+        <div class="bg-white rounded-lg shadow mb-6 p-4">
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <div>
+                    <h3 class="font-bold text-gray-800">🔐 角色权限矩阵</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">保存前弹窗二次确认；所有变更写入审计日志（permission_change）。前端隐藏 + 后端接口双重校验。</p>
+                </div>
+                <button onclick="savePerms()" class="px-4 py-1.5 rounded bg-purple-600 text-white text-xs hover:bg-purple-700">保存权限配置</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="perm-table w-full border-collapse" id="perm-table"></table>
+            </div>
+        </div>
+
+        <!-- 审计日志 -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <h3 class="font-bold text-gray-800">📜 操作审计日志 <span class="text-xs font-normal text-gray-500">（注册/审核/角色/登录/敏感查看与修改/权限变更/关键操作，全程留痕）</span></h3>
+                <div class="flex gap-2 items-center">
+                    <select id="audit-action" class="border border-gray-300 rounded px-2 py-1.5 text-xs max-w-[220px]"></select>
+                    <button onclick="loadAudit(0)" class="px-3 py-1.5 rounded border border-gray-300 text-xs hover:bg-gray-50">查询</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-white"><tr class="text-left text-gray-500 border-b">
+                        <th class="py-2 pr-3">时间</th><th class="py-2 pr-3">操作人</th><th class="py-2 pr-3">动作</th>
+                        <th class="py-2 pr-3">对象</th><th class="py-2">详情</th>
+                    </tr></thead>
+                    <tbody id="audit-tbody" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            <div class="text-center mt-3">
+                <button id="audit-more" onclick="loadMoreAudit()" class="text-xs text-blue-600 hover:underline hidden">加载更多</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        bootGate({ minPerm: "manage_users", minPermLabel: "账号与权限配置" }).then(user => {
+            document.getElementById("gate-loading").classList.add("hidden");
+            if (!user) return;
+            document.getElementById("app").classList.remove("hidden");
+            initPage();
+        });
+
+        const ROLE_LABELS = { admin: "管理员", social_worker: "社工/康复师", volunteer: "志愿者", parent: "家长" };
+        const PERM_LABELS = {
+            manage_users: "账号与权限配置", manage_activities: "活动管理", manage_enrollments: "报名管理与异常处理",
+            attendance_callback: "签到回传（全量名单）", export_data: "签到表/台账导出", history_profiles: "历史信息库",
+            view_sensitive: "敏感字段查看/修改", volunteer_portal: "志愿者端", parent_portal: "家长端",
+        };
+        const STATUS_CLS = { "待审核": "bg-orange-100 text-orange-700", "启用": "bg-green-100 text-green-700", "停用": "bg-gray-200 text-gray-500", "已驳回": "bg-red-100 text-red-700" };
+        const ACTION_CLS = {
+            login: "bg-blue-50 text-blue-600", login_failed: "bg-red-50 text-red-600", logout: "bg-gray-100 text-gray-500",
+            register: "bg-orange-50 text-orange-600", register_review: "bg-purple-50 text-purple-600", role_change: "bg-purple-100 text-purple-700",
+            user_status: "bg-gray-100 text-gray-600", password_reset: "bg-amber-50 text-amber-700", user_created: "bg-blue-50 text-blue-600",
+            permission_change: "bg-red-100 text-red-700", view_sensitive: "bg-violet-50 text-violet-700", update_sensitive: "bg-violet-100 text-violet-700",
+            volunteer_attendance: "bg-green-50 text-green-700", parent_confirm: "bg-orange-50 text-orange-700", parent_auto_bind: "bg-amber-50 text-amber-700",
+            merge_profile: "bg-red-50 text-red-700", assignment_created: "bg-teal-50 text-teal-700", assignment_deleted: "bg-gray-100 text-gray-500",
+        };
+        let permMatrix = null, auditOffset = 0;
+
+        async function initPage() {
+            loadUsers();
+            loadPerms();
+            loadAuditActions();
+            loadAudit(0);
+            document.getElementById("user-status-filter").onchange = loadUsers;
+        }
+
+        // ---------- 用户 ----------
+        async function loadUsers() {
+            const status = document.getElementById("user-status-filter").value;
+            const body = await api("/api/users" + (status ? `?status=${encodeURIComponent(status)}` : ""));
+            const users = body.data;
+            document.getElementById("pending-badge").textContent = body.pending ? `${body.pending} 条待处理` : "暂无待审核";
+            const pend = users.filter(u => u.status === "待审核");
+            document.getElementById("pending-body").innerHTML = pend.length ? pend.map(pendingCard).join("") :
+                `<p class="text-sm text-gray-400 py-2 text-center">没有待审核的注册申请</p>`;
+            document.getElementById("user-tbody").innerHTML = users.map(u => `
+                <tr class="${u.status === "待审核" ? "bg-orange-50" : ""}">
+                    <td class="py-2 pr-2 text-gray-400">#${u.id}</td>
+                    <td class="py-2 pr-2 font-medium">${esc(u.display_name) || "—"}</td>
+                    <td class="py-2 pr-2 text-gray-500">${esc(u.username)}</td>
+                    <td class="py-2 pr-2">${u.role ? roleSelect(u) : '<span class="text-gray-400 text-xs">待审核确认</span>'}</td>
+                    <td class="py-2 pr-2 text-gray-500">${esc(u.phone) || "—"}</td>
+                    <td class="py-2 pr-2"><span class="status-chip ${STATUS_CLS[u.status] || ""}">${esc(u.status)}</span>
+                        ${u.reject_reason ? `<div class="text-[10px] text-red-500 max-w-[140px]">原因：${esc(u.reject_reason)}</div>` : ""}</td>
+                    <td class="py-2 pr-2 text-xs text-gray-500">${u.apply_role ? `申请：${ROLE_LABELS[u.apply_role] || u.apply_role}` : "后台开通"}${u.org_name ? `<br>${esc(u.org_name)}` : ""}${u.staff_no ? ` / ${esc(u.staff_no)}` : ""}</td>
+                    <td class="py-2 space-x-1 whitespace-nowrap">
+                        ${u.status === "启用" && u.id !== window.__me.id ? `<button onclick="toggleStatus(${u.id},'停用')" class="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">停用</button>` : ""}
+                        ${u.status === "停用" ? `<button onclick="toggleStatus(${u.id},'启用')" class="text-xs px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200">启用</button>` : ""}
+                        ${u.role ? `<button onclick="resetPwd(${u.id},'${esc(u.display_name)}')" class="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">重置口令</button>` : ""}
+                    </td>
+                </tr>`).join("");
+        }
+
+        function roleSelect(u) {
+            return `<select onchange="changeRole(${u.id}, this.value, '${esc(u.role)}')" class="border rounded px-1 py-0.5 text-xs ${u.role === "admin" ? "border-purple-300" : ""}">
+                ${Object.keys(ROLE_LABELS).map(r => `<option value="${r}" ${u.role === r ? "selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}</select>`;
+        }
+
+        function pendingCard(u) {
+            return `<div class="border border-orange-200 rounded-lg p-3 flex flex-wrap items-center gap-3 bg-orange-50/50">
+                <div class="flex-1 min-w-[220px]">
+                    <div class="font-semibold text-sm">${esc(u.display_name)} <span class="text-gray-400 text-xs">${esc(u.phone)}</span></div>
+                    <div class="text-xs text-gray-500 mt-0.5">申请身份：<b class="text-orange-600">${ROLE_LABELS[u.apply_role] || u.apply_role}</b>
+                    ${u.org_name ? ` · 机构：${esc(u.org_name)}` : ""}${u.staff_no ? ` · 工号/岗位：${esc(u.staff_no)}` : ""} · 提交于 ${esc(u.created_at)}</div>
+                </div>
+                <div class="flex items-center gap-2 text-xs">
+                    <label>确认实际角色</label>
+                    <select id="role-${u.id}" class="border rounded px-2 py-1.5">
+                        ${Object.keys(ROLE_LABELS).filter(r => r !== "parent").map(r =>
+                            `<option value="${r}" ${u.apply_role === r ? "selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
+                    </select>
+                    <button onclick="approve(${u.id})" class="px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-700">通过</button>
+                    <button onclick="reject(${u.id})" class="px-3 py-1.5 rounded bg-red-500 text-white hover:bg-red-600">驳回</button>
+                </div>
+            </div>`;
+        }
+
+        async function approve(id) {
+            const role = document.getElementById(`role-${id}`).value;
+            if (!confirm(`确认通过该注册申请，并授予角色「${ROLE_LABELS[role]}」？\n（审核人确认实际角色，可与申请意向不同；将写入审计）`)) return;
+            try {
+                const body = await api(`/api/users/${id}/review`, { method: "POST", body: { action: "approve", role } });
+                toast(body.message);
+                loadUsers();
+            } catch (e) { toast(e.message, false); }
+        }
+
+        async function reject(id) {
+            const reason = prompt("驳回必须填写原因（将展示给申请人并写入审计）：");
+            if (reason === null) return;
+            if (!reason.trim()) return toast("驳回必须填写原因", false);
+            try {
+                const body = await api(`/api/users/${id}/review`, { method: "POST", body: { action: "reject", reason: reason.trim() } });
+                toast(body.message);
+                loadUsers();
+            } catch (e) { toast(e.message, false); }
+        }
+
+        async function changeRole(id, role, oldRole) {
+            if (role === oldRole) return;
+            if (!confirm(`确认将该账号角色从「${ROLE_LABELS[oldRole]}」改为「${ROLE_LABELS[role]}」？\n（关键操作，二次确认；写入审计）`)) { loadUsers(); return; }
+            try {
+                const body = await api(`/api/users/${id}`, { method: "PUT", body: { role } });
+                toast(body.message); loadUsers(); loadAudit(0);
+            } catch (e) { toast(e.message, false); loadUsers(); }
+        }
+
+        async function toggleStatus(id, status) {
+            const verb = status === "停用" ? "停用" : "重新启用";
+            if (!confirm(`确认${verb}该账号？\n（关键操作，二次确认；停用后立即失去所有功能访问）`)) return;
+            try {
+                const body = await api(`/api/users/${id}`, { method: "PUT", body: { status } });
+                toast(body.message); loadUsers(); loadAudit(0);
+            } catch (e) { toast(e.message, false); }
+        }
+
+        async function resetPwd(id, name) {
+            const pwd = prompt(`为「${name}」设置新口令（留空则使用服务端配置中的默认口令）：`);
+            if (pwd === null) return;
+            try {
+                const body = await api(`/api/users/${id}`, { method: "PUT", body: { password: pwd.trim() } });
+                toast(body.message); loadAudit(0);
+            } catch (e) { toast(e.message, false); }
+        }
+
+        function toggleCreate() { document.getElementById("create-form").classList.toggle("hidden"); }
+
+        document.getElementById("create-form").onsubmit = async e => {
+            e.preventDefault();
+            try {
+                const body = await api("/api/users", {
+                    method: "POST",
+                    body: { username: $("cu-username").value.trim(), display_name: $("cu-name").value.trim(),
+                            role: $("cu-role").value, phone: $("cu-phone").value.trim(), password: $("cu-pwd").value.trim() },
+                });
+                toast(body.message); loadUsers(); loadAudit(0);
+                $("cu-username").value = $("cu-name").value = $("cu-phone").value = $("cu-pwd").value = "";
+            } catch (e) { toast(e.message, false); }
+        };
+
+        // ---------- 权限矩阵 ----------
+        async function loadPerms() {
+            const body = await api("/api/role_permissions");
+            permMatrix = body.data;
+            renderPerms();
+        }
+
+        function renderPerms() {
+            const roles = ["admin", "social_worker", "volunteer", "parent"];
+            const perms = Object.keys(PERM_LABELS);
+            let html = `<thead><tr><th class="text-left bg-gray-50">权限 \\ 角色</th>${roles.map(r =>
+                `<th class="bg-gray-50">${ROLE_LABELS[r]}</th>`).join("")}</tr></thead><tbody>`;
+            for (const p of perms) {
+                html += `<tr><td class="text-left text-gray-600">${PERM_LABELS[p]}</td>${roles.map(r =>
+                    `<td class="text-center"><input type="checkbox" data-role="${r}" data-perm="${p}" ${permMatrix[r][p] ? "checked" : ""}></td>`).join("")}</tr>`;
+            }
+            html += "</tbody>";
+            document.getElementById("perm-table").innerHTML = html;
+        }
+
+        async function savePerms() {
+            const roles = ["admin", "social_worker", "volunteer", "parent"];
+            const matrix = {};
+            for (const r of roles) {
+                matrix[r] = {};
+                document.querySelectorAll(`#perm-table input[data-role="${r}"]`).forEach(cb => matrix[r][cb.dataset.perm] = cb.checked);
+            }
+            // diff 提示
+            const changes = [];
+            for (const r of roles) for (const p in permMatrix[r]) {
+                if (permMatrix[r][p] !== matrix[r][p]) changes.push(`${ROLE_LABELS[r]} · ${PERM_LABELS[p]}：${permMatrix[r][p] ? "有" : "无"} → ${matrix[r][p] ? "有" : "无"}`);
+            }
+            if (!changes.length) return toast("没有权限变更", true);
+            if (!confirm(`⚠️ 权限配置是关键操作，确认保存以下 ${changes.length} 项变更？\n\n${changes.slice(0, 8).join("\n")}${changes.length > 8 ? "\n…" : ""}`)) return;
+            try {
+                await api("/api/role_permissions", { method: "PUT", body: { matrix } });
+                toast("权限配置已保存，变更已写入审计日志");
+                loadPerms(); loadAudit(0);
+            } catch (e) { toast(e.message, false); }
+        }
+
+        // ---------- 审计 ----------
+        async function loadAuditActions() {
+            const body = await api("/api/audit_logs?limit=200");
+            const acts = [...new Set(body.data.map(l => l.action))].sort();
+            document.getElementById("audit-action").innerHTML = `<option value="">全部动作</option>` +
+                acts.map(a => `<option value="${a}">${a}</option>`).join("");
+            renderAudit(body.data, 0);
+        }
+
+        function renderAudit(list, offset) {
+            const tb = document.getElementById("audit-tbody");
+            if (offset === 0) tb.innerHTML = "";
+            tb.innerHTML += list.map(l => `
+                <tr>
+                    <td class="py-1.5 pr-3 text-gray-400 whitespace-nowrap">${esc(l.created_at)}</td>
+                    <td class="py-1.5 pr-3 whitespace-nowrap">${esc(l.username) || "—"}</td>
+                    <td class="py-1.5 pr-3"><span class="px-1.5 py-0.5 rounded text-[11px] ${ACTION_CLS[l.action] || "bg-gray-100"}">${esc(l.action)}</span></td>
+                    <td class="py-1.5 pr-3 text-gray-500 whitespace-nowrap">${esc(l.target_type)}#${l.target_id}</td>
+                    <td class="py-1.5 text-gray-600">${esc(l.detail)}</td>
+                </tr>`).join("");
+            document.getElementById("audit-more").classList.toggle("hidden", list.length < 50);
+            auditOffset = offset + list.length;
+        }
+
+        async function loadAudit(offset) {
+            const action = document.getElementById("audit-action").value;
+            const body = await api(`/api/audit_logs?offset=${offset}&limit=50` + (action ? `&action=${encodeURIComponent(action)}` : ""));
+            renderAudit(body.data, offset);
+        }
+
+        function loadMoreAudit() { loadAudit(auditOffset); }
+    </script>
+</body>
+</html>

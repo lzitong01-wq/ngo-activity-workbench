@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现场签到</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <style>
+        .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; white-space: nowrap; }
+        .att-btn { padding: 3px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; transition: all .15s; }
+        .att-btn:hover { transform: translateY(-1px); }
+        .att-btn.active-ok { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: 600; }
+        .att-btn.active-no { background: #fee2e2; border-color: #dc2626; color: #991b1b; font-weight: 600; }
+        .att-btn.active-temp { background: #fef3c7; border-color: #d97706; color: #92400e; font-weight: 600; }
+        tr.row-ok { background-color: #f0fdf4; }
+        tr.row-no { background-color: #fef2f2; }
+        tr.row-temp { background-color: #fffbeb; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-[1400px] mx-auto px-4 py-6">
+        <!-- 标题 -->
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">现场签到</h1>
+                <p class="text-sm text-gray-500 mt-1">活动当天按纸质签到表勾选后，在这里回传签到差异（到场 / 未到场 / 临时到场）；也可直接打印签到表带走</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/static/index.html" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition">← 统一报名列表</a>
+                <a href="/static/activities.html" data-perm="manage_activities" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700 transition">活动管理 →</a>
+                <a href="/static/profiles.html" data-perm="history_profiles" class="px-4 py-2 text-sm text-white bg-violet-600 rounded hover:bg-violet-700 transition">历史信息库 →</a>
+                <a href="/static/group_import.html" data-perm="manage_enrollments" class="px-4 py-2 text-sm text-white bg-amber-500 rounded hover:bg-amber-600 transition">群接龙导入 →</a>
+                <a href="/static/users.html" data-perm="manage_users" class="px-4 py-2 text-sm text-white bg-purple-600 rounded hover:bg-purple-700 transition">账号权限 →</a>
+                <a href="/static/volunteer.html" data-perm="volunteer_portal" class="px-4 py-2 text-sm text-white bg-green-600 rounded hover:bg-green-700 transition">我的服务 →</a>
+                <a href="/static/parent.html" data-perm="parent_portal" class="px-4 py-2 text-sm text-white bg-orange-500 rounded hover:bg-orange-600 transition">我的报名 →</a>
+            </div>
+        </div>
+
+        <!-- 活动选择 + 导出 -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap items-end gap-4">
+            <div class="min-w-[280px]">
+                <label class="block text-xs text-gray-500 mb-1">选择活动 <span class="text-red-500">*</span></label>
+                <select id="activity-select" class="border border-gray-300 rounded px-3 py-2 text-sm w-full" onchange="loadRoster()">
+                    <option value="">— 请选择活动 —</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">签到记录人</label>
+                <input id="operator" class="border border-gray-300 rounded px-3 py-2 text-sm w-[150px]" value="现场工作人员">
+            </div>
+            <div class="ml-auto flex flex-wrap gap-2">
+                <button onclick="exportSheet('html')" class="px-3 py-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">🖨 打印签到表</button>
+                <button onclick="exportSheet('xlsx')" class="px-3 py-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100">签到表 Excel</button>
+                <button onclick="exportSheet('pdf')" class="px-3 py-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100">签到表 PDF</button>
+                <button onclick="exportLedger('xlsx')" class="px-3 py-2 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded hover:bg-teal-100">台账 Excel</button>
+                <button onclick="exportLedger('pdf')" class="px-3 py-2 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded hover:bg-violet-100">台账 PDF</button>
+            </div>
+        </div>
+
+        <!-- 统计条 -->
+        <div id="stats-bar" class="hidden grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4"><div class="text-sm text-gray-500">应到（名单）</div><div class="text-2xl font-bold text-gray-800" id="sc-total">-</div></div>
+            <div class="bg-white rounded-lg shadow p-4"><div class="text-sm text-green-600">到场</div><div class="text-2xl font-bold text-green-600" id="sc-ok">-</div></div>
+            <div class="bg-white rounded-lg shadow p-4"><div class="text-sm text-red-600">未到场</div><div class="text-2xl font-bold text-red-600" id="sc-no">-</div></div>
+            <div class="bg-white rounded-lg shadow p-4"><div class="text-sm text-amber-600">临时到场</div><div class="text-2xl font-bold text-amber-600" id="sc-temp">-</div></div>
+            <div class="bg-white rounded-lg shadow p-4"><div class="text-sm text-gray-500">未记录</div><div class="text-2xl font-bold text-gray-400" id="sc-none">-</div></div>
+        </div>
+
+        <!-- 空状态 -->
+        <div id="empty-hint" class="bg-white rounded-lg shadow p-10 text-center text-gray-400">
+            👈 请先在上方选择活动，加载该活动签到名单
+        </div>
+
+        <!-- 工具条 -->
+        <div id="toolbar" class="hidden bg-white rounded-lg shadow p-4 mb-4 flex flex-wrap items-center gap-3">
+            <button onclick="bulkAllPresent()" class="px-3 py-2 text-xs text-white bg-green-600 rounded hover:bg-green-700">✓ 未记录全部标为到场</button>
+            <button onclick="toggleBulkPaste()" class="px-3 py-2 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200">📋 纸质表誊录回传</button>
+            <button onclick="toggleAssignPanel()" class="px-3 py-2 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded hover:bg-teal-100">🤝 志愿者配对</button>
+            <span class="text-xs text-gray-400">签到差异（未到场/临时到场）会写留痕，可在统一列表详情中追溯</span>
+        </div>
+
+        <!-- 志愿者配对（任务5） -->
+        <div id="assign-panel" class="hidden bg-white rounded-lg shadow p-4 mb-4">
+            <div class="text-sm font-semibold text-gray-700 mb-1">🤝 志愿者 ↔ 孩子配对（配对后志愿者在「我的服务」中查看该孩子的服务提示并签到；敏感字段不下发）</div>
+            <div class="flex flex-wrap items-end gap-3 mt-2 text-sm">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">志愿者（需审核通过的启用账号）</label>
+                    <select id="assign-volunteer" class="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[160px]">
+                        <option value="">加载中…</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">本活动孩子</label>
+                    <select id="assign-child" class="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[180px]">
+                        <option value="">请先选择活动</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">配对备注（选填）</label>
+                    <input id="assign-note" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-[180px]" placeholder="如：负责陪同与如厕">
+                </div>
+                <button onclick="createAssignment()" class="px-4 py-2 text-sm text-white bg-teal-600 rounded hover:bg-teal-700">创建配对</button>
+            </div>
+            <div class="mt-3">
+                <div class="text-xs text-gray-500 mb-1">本活动已有配对 <span id="assign-count"></span></div>
+                <div id="assign-list" class="space-y-1"></div>
+            </div>
+        </div>
+
+        <!-- 纸质表誊录 -->
+        <div id="bulk-box" class="hidden bg-white rounded-lg shadow p-4 mb-4">
+            <div class="text-sm font-semibold text-gray-700 mb-2">粘贴纸质签到表誊录结果（每行一条：<code class="bg-gray-100 px-1 rounded">姓名,状态,备注</code>，状态=到场/未到场/临时到场，姓名可写真名或小名）</div>
+            <textarea id="bulk-text" rows="5" class="border border-gray-300 rounded px-3 py-2 text-sm w-full font-mono" placeholder="小A,到场
+小B,临时到场,奶奶送来
+小E,未到场,感冒请假"></textarea>
+            <div class="mt-2 flex gap-2">
+                <button onclick="submitBulkPaste()" class="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700">批量回传</button>
+                <button onclick="toggleBulkPaste()" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">收起</button>
+            </div>
+        </div>
+
+        <!-- 名单 -->
+        <div id="roster-box" class="hidden bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">序号</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">学生真名</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">小名</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">家长</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">手机号</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">签到状态</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">现场备注</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-600">回传时间 / 记录人</th>
+                        </tr>
+                    </thead>
+                    <tbody id="roster-body" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 z-[60] hidden">
+        <div class="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg" id="toast-text"></div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        const STATUSES = ["到场", "未到场", "临时到场"];
+        let activitiesCache = [];
+        let currentActivity = null;
+        let roster = [];
+
+        async function init() {
+            try {
+                const res = await fetch(`${API_BASE}/api/activities`);
+                const json = await res.json();
+                activitiesCache = json.data || [];
+                const sel = document.getElementById('activity-select');
+                sel.innerHTML = '<option value="">— 请选择活动 —</option>' + activitiesCache.map(a => {
+                    const cap = a.capacity > 0 ? `${a.enrollment_count}/${a.capacity} 人` : `${a.enrollment_count} 人`;
+                    return `<option value="${a.id}">${escapeHtml(a.name)} · ${a.status} · 已报 ${cap}</option>`;
+                }).join('');
+                // 支持 ?activity_id= 直达（从活动管理页跳转）
+                const fromUrl = new URLSearchParams(location.search).get('activity_id');
+                if (fromUrl && activitiesCache.some(a => String(a.id) === fromUrl)) {
+                    sel.value = fromUrl;
+                    loadRoster();
+                }
+            } catch (err) { toast('加载活动失败：' + err.message); }
+        }
+
+        async function loadRoster() {
+            const id = document.getElementById('activity-select').value;
+            ['stats-bar', 'toolbar', 'roster-box'].forEach(i => document.getElementById(i).classList.add('hidden'));
+            document.getElementById('empty-hint').classList.remove('hidden');
+            if (!id) { currentActivity = null; return; }
+            try {
+                const res = await fetch(`${API_BASE}/api/activities/${id}/attendance`);
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '加载失败');
+                currentActivity = json.activity;
+                renderRoster(json.data || [], json.attendance_counts || {});
+                if (!$('assign-panel').classList.contains('hidden')) loadAssignments();
+            } catch (err) { toast('加载签到名单失败：' + err.message); }
+        }
+
+        function renderRoster(data, counts) {
+            roster = data;
+            document.getElementById('empty-hint').classList.add('hidden');
+            document.getElementById('stats-bar').classList.remove('hidden');
+            document.getElementById('toolbar').classList.remove('hidden');
+            document.getElementById('roster-box').classList.remove('hidden');
+            document.getElementById('sc-total').textContent = counts["未记录"] + counts["到场"] + counts["未到场"] + counts["临时到场"];
+            document.getElementById('sc-ok').textContent = counts["到场"];
+            document.getElementById('sc-no').textContent = counts["未到场"];
+            document.getElementById('sc-temp').textContent = counts["临时到场"];
+            document.getElementById('sc-none').textContent = counts["未记录"];
+
+            const tbody = document.getElementById('roster-body');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">该活动还没有报名，无法签到</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map((e, idx) => {
+                const st = e.attendance_status || '';
+                const rowCls = st === '到场' ? 'row-ok' : st === '未到场' ? 'row-no' : st === '临时到场' ? 'row-temp' : '';
+                const btn = (s, cls) => `<button class="att-btn ${st === s ? cls : ''}" onclick="markAttendance(${e.id}, '${s}')">${st === s ? '● ' : ''}${s}</button>`;
+                return `
+                    <tr class="${rowCls}" id="att-row-${e.id}">
+                        <td class="px-3 py-2 text-sm text-gray-500">${idx + 1}</td>
+                        <td class="px-3 py-2 text-sm font-medium text-gray-900">${escapeHtml(e.student_real_name) || '<span class="text-gray-400">（空）</span>'}</td>
+                        <td class="px-3 py-2 text-sm text-gray-600">${escapeHtml(e.student_nickname) || '-'}</td>
+                        <td class="px-3 py-2 text-sm text-gray-600">${escapeHtml(e.parent_name) || '-'}</td>
+                        <td class="px-3 py-2 text-sm text-gray-600">${escapeHtml(e.phone) || '-'}</td>
+                        <td class="px-3 py-2">
+                            <div class="flex gap-1.5 items-center flex-wrap">
+                                ${btn("到场", "active-ok")}${btn("未到场", "active-no")}${btn("临时到场", "active-temp")}
+                                ${st ? `<button class="att-btn" onclick="markAttendance(${e.id}, '')" title="清除签到记录">✕</button>` : ''}
+                            </div>
+                        </td>
+                        <td class="px-3 py-2">
+                            <input type="text" value="${escapeHtml(e.attendance_note || '')}" placeholder="现场备注…"
+                                   class="border border-gray-200 rounded px-2 py-1 text-xs w-[180px] note-input"
+                                   onchange="saveNote(${e.id}, this)">
+                        </td>
+                        <td class="px-3 py-2 text-xs text-gray-500">${st ? `${escapeHtml(e.attendance_time || '')}<br>${escapeHtml(e.attendance_operator || '')}` : '—'}</td>
+                    </tr>`;
+            }).join('');
+        }
+
+        // ---------- 任务5：志愿者配对 ----------
+        function toggleAssignPanel() {
+            const panel = $('assign-panel');
+            panel.classList.toggle('hidden');
+            if (!panel.classList.contains('hidden')) loadAssignments();
+        }
+
+        async function loadAssignments() {
+            const actId = $('activity-select').value;
+            if (!actId) return;
+            // 志愿者下拉（只列启用志愿者；缓存避免重复拉取）
+            if (!$('assign-volunteer').dataset.loaded) {
+                try {
+                    const users = await api('/api/users?status=启用');
+                    const vols = (users.data || []).filter(u => u.role === 'volunteer');
+                    $('assign-volunteer').innerHTML = vols.length
+                        ? vols.map(v => `<option value="${v.id}">${esc(v.display_name)}（${esc(v.username)}）</option>`).join('')
+                        : '<option value="">暂无可用志愿者（需注册审核通过）</option>';
+                    $('assign-volunteer').dataset.loaded = '1';
+                } catch (e) { $('assign-volunteer').innerHTML = '<option value="">加载失败</option>'; }
+            }
+            // 孩子下拉（当前活动名单）
+            $('assign-child').innerHTML = roster.length
+                ? roster.map(e => `<option value="${e.id}">${esc(e.student_real_name) || '#' + e.id}（小名：${esc(e.student_nickname) || '-'}）</option>`).join('')
+                : '<option value="">该活动暂无报名</option>';
+            // 已有配对
+            try {
+                const body = await api(`/api/assignments?activity_id=${actId}`);
+                $('assign-count').textContent = `（${body.total} 条）`;
+                $('assign-list').innerHTML = body.data.length ? body.data.map(a => `
+                    <div class="flex items-center gap-2 text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1.5">
+                        <span class="font-medium text-teal-700">${esc(a.volunteer_name)}</span>
+                        <span class="text-gray-400">↔</span>
+                        <span>${esc(a.child_name)}</span>
+                        ${a.note ? `<span class="text-gray-400">· ${esc(a.note)}</span>` : ''}
+                        <span class="text-gray-300 ml-auto">${esc(a.created_at)}</span>
+                        <button onclick="deleteAssignment(${a.id})" class="text-red-500 hover:underline">解除</button>
+                    </div>`).join('') : '<div class="text-xs text-gray-400">暂无配对</div>';
+            } catch (e) { $('assign-list').innerHTML = `<div class="text-xs text-gray-400">${esc(e.message)}</div>`; }
+        }
+
+        async function createAssignment() {
+            const volunteer_user_id = $('assign-volunteer').value;
+            const enrollment_id = $('assign-child').value;
+            if (!volunteer_user_id || !enrollment_id) return toast('请先选择活动和志愿者、孩子', false);
+            try {
+                const body = await api('/api/assignments', {
+                    method: 'POST',
+                    body: { activity_id: parseInt($('activity-select').value, 10), volunteer_user_id: parseInt(volunteer_user_id, 10), enrollment_id: parseInt(enrollment_id, 10), note: $('assign-note').value.trim() }
+                });
+                toast(body.message);
+                $('assign-note').value = '';
+                loadAssignments();
+            } catch (e) { toast(e.message, false); }
+        }
+
+        async function deleteAssignment(id) {
+            if (!confirm('确认解除该配对？解除后志愿者端将看不到该孩子。')) return;
+            try { const body = await api(`/api/assignments/${id}`, { method: 'DELETE' }); toast(body.message); loadAssignments(); }
+            catch (e) { toast(e.message, false); }
+        }
+
+        async function postAttendance(id, status, note) {
+            const operator = document.getElementById('operator').value.trim() || '现场工作人员';
+            const res = await fetch(`${API_BASE}/api/enrollments/${id}/attendance`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status, note, operator })
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || '回传失败');
+            return json;
+        }
+
+        async function markAttendance(id, status) {
+            const note = document.querySelector(`#att-row-${id} .note-input`)?.value || '';
+            try {
+                const json = await postAttendance(id, status, note);
+                toast(json.message || '已记录');
+                loadRoster();
+            } catch (err) { toast('回传失败：' + err.message); }
+        }
+
+        async function saveNote(id, inputEl) {
+            const row = roster.find(e => e.id === id);
+            const status = (row && row.attendance_status) || '';
+            try {
+                const json = await postAttendance(id, status, inputEl.value.trim());
+                toast('备注已保存' + (status ? `（签到状态：${status}）` : '，尚未标记签到状态'));
+                loadRoster();
+            } catch (err) { toast('保存失败：' + err.message); }
+        }
+
+        async function bulkAllPresent() {
+            const pending = roster.filter(e => !e.attendance_status);
+            if (!pending.length) { toast('没有「未记录」的报名'); return; }
+            if (!confirm(`将 ${pending.length} 条「未记录」报名全部标记为「到场」？`)) return;
+            try {
+                const operator = document.getElementById('operator').value.trim() || '现场工作人员';
+                const res = await fetch(`${API_BASE}/api/enrollments/attendance/batch`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records: pending.map(e => ({ id: e.id, status: '到场' })), operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '批量回传失败');
+                toast(json.message || '批量回传完成');
+                loadRoster();
+            } catch (err) { toast('批量回传失败：' + err.message); }
+        }
+
+        function toggleBulkPaste() {
+            document.getElementById('bulk-box').classList.toggle('hidden');
+        }
+
+        async function submitBulkPaste() {
+            const lines = document.getElementById('bulk-text').value.trim().split('\n').filter(l => l.trim());
+            if (!lines.length) { toast('请先粘贴誊录内容'); return; }
+            const alias = { '到': '到场', '到场': '到场', '未到': '未到场', '未到场': '未到场', '缺勤': '未到场',
+                            '临时': '临时到场', '临时到场': '临时到场', '补到': '临时到场' };
+            const records = [], errors = [];
+            lines.forEach((line, i) => {
+                const parts = line.split(/[,，、\t]/).map(s => s.trim()).filter(s => s);
+                const name = parts[0], status = alias[parts[1] || ''], note = parts.slice(2).join('，');
+                if (!name || !status) { errors.push(`第 ${i + 1} 行格式无法识别`); return; }
+                const hit = roster.find(e => e.student_real_name === name || e.student_nickname === name);
+                if (!hit) { errors.push(`第 ${i + 1} 行：名单中找不到「${name}」`); return; }
+                records.push({ id: hit.id, status, note: note || '' });
+            });
+            if (!records.length) { toast('没有可回传的记录：' + errors.join('；')); return; }
+            try {
+                const operator = document.getElementById('operator').value.trim() || '现场工作人员';
+                const res = await fetch(`${API_BASE}/api/enrollments/attendance/batch`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records, operator })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '批量回传失败');
+                const extra = (json.data.failed || []).map(f => `id=${f.id}: ${f.error}`);
+                const allErr = errors.concat(extra);
+                toast((json.message || '批量回传完成') + (allErr.length ? `；未匹配：${allErr.join('；')}` : ''));
+                document.getElementById('bulk-text').value = '';
+                loadRoster();
+            } catch (err) { toast('批量回传失败：' + err.message); }
+        }
+
+        function requireActivity() {
+            const id = document.getElementById('activity-select').value;
+            if (!id) { toast('请先选择活动'); return null; }
+            return id;
+        }
+
+        function exportSheet(fmt) {
+            const id = requireActivity();
+            if (id) window.open(`${API_BASE}/api/activities/${id}/signup_sheet?format=${fmt}`, '_blank');
+        }
+
+        function exportLedger(fmt) {
+            const id = requireActivity();
+            if (id) window.open(`${API_BASE}/api/export/ledger?activity_id=${id}&format=${fmt}`, '_blank');
+        }
+
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.add('hidden'), 3500);
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 任务5：启动门禁——校验登录态与「签到回传」权限后再初始化
+        bootGate({ minPerm: "attendance_callback", minPermLabel: "签到回传" }).then(user => {
+            if (!user) return;
+            init();
+        });
+    </script>
+</body>
+</html>
